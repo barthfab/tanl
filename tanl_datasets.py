@@ -2553,10 +2553,37 @@ class BigBioDatasets(BaseDataset):
         return new_start, new_end
 
 
+
+
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
                          macro: bool = False) \
             -> Dict[str, float]:
         """
         Evaluate model on this dataset.
         """
-        return data_args
+
+        def compute_accuracy(results_dict):
+            num_examples = float(sum(results_dict["num_sentences"]))
+            return sum(results_dict["correct_state"]) / num_examples
+
+        results = {
+            'num_sentences': [],
+            'correct_state': [],
+            'raw_gold_state': [],
+            'raw_pred_state': [],
+            'list_pred_state': [],
+            'list_gold_state': []
+        }
+
+        for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
+            new_result = self.evaluate(
+                example=example,
+                output_sentence=output_sentence,
+            )
+
+            for k, v in new_result.items():
+                results[k].append(v)
+
+        return {
+            'joint_accuracy': compute_accuracy(results),
+        }
