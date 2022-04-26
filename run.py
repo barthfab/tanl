@@ -11,7 +11,7 @@ import configparser
 import itertools
 import json
 import logging
-import os
+import sys, os
 from collections import defaultdict
 import torch
 from torch.utils.data import DataLoader
@@ -22,6 +22,7 @@ from tanl_datasets import load_dataset
 from evaluate import evaluate, get_avg_results, print_results
 from utils import get_episode_indices
 
+sys.path.append("/vol/fob-vol7/mi19/barthfab/biomedical")
 
 def main():
     assert torch.cuda.is_available(), 'CUDA not available'
