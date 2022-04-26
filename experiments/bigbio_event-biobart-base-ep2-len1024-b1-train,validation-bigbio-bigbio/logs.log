@@ -1,0 +1,17 @@
+2022-04-26 16:25:03 - INFO - root -   Episode 1 (10 episodes total)
+2022-04-26 16:25:03 - INFO - root -   Output directory: experiments/bigbio_event-biobart-base-ep2-len1024-b1-train,validation-bigbio-bigbio/episode1
+2022-04-26 16:25:03 - INFO - root -   Using model GanjinZero/biobart-base
+2022-04-26 16:25:12 - INFO - root -   Process dataset bigbio_kb (train)
+2022-04-26 16:28:11 - INFO - root -   Episode 1 (10 episodes total)
+2022-04-26 16:28:11 - INFO - root -   Output directory: experiments/bigbio_event-biobart-base-ep2-len1024-b1-train,validation-bigbio-bigbio/episode1
+2022-04-26 16:28:11 - INFO - root -   Using model GanjinZero/biobart-base
+2022-04-26 16:28:14 - INFO - root -   Process dataset bigbio_kb (train)
+2022-04-26 16:31:17 - INFO - root -   Episode 1 (10 episodes total)
+2022-04-26 16:31:17 - INFO - root -   Output directory: experiments/bigbio_event-biobart-base-ep2-len1024-b1-train,validation-bigbio-bigbio/episode1
+2022-04-26 16:31:17 - INFO - root -   Using model GanjinZero/biobart-base
+2022-04-26 16:31:24 - INFO - root -   Process dataset bigbio_kb (train)
+2022-04-26 16:34:09 - INFO - root -   Episode 1 (10 episodes total)
+2022-04-26 16:34:09 - INFO - root -   Output directory: experiments/bigbio_event-biobart-base-ep2-len1024-b1-train,validation-bigbio-bigbio/episode1
+2022-04-26 16:34:09 - INFO - root -   Using model GanjinZero/biobart-base
+2022-04-26 16:34:12 - INFO - root -   Process dataset bigbio_kb (train)
+2022-04-26 16:34:26 - WARNING - datasets.builder -   Reusing dataset bionlp_st_2013_pc (/vol/fob-vol7/mi19/barthfab/.cache/huggingface/datasets/bionlp_st_2013_pc/bionlp_st_2013_pc_bigbio_kb/1.0.0/c163e264ff3213bc8b221bcb588a785693c87fe1c2ad06ff25382db206c684bf)
