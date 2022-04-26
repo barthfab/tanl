@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoTokenizer, HfArgumentParser, AutoModelForSeq2SeqLM, Trainer
 
 from arguments import ModelArguments, DataTrainingArguments, TrainingArguments
-from datasets import load_dataset
+from tanl_datasets import load_dataset
 from evaluate import evaluate, get_avg_results, print_results
 from utils import get_episode_indices
 

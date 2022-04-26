@@ -29,7 +29,7 @@ class BaseOutputFormat(ABC):
     RELATION_SEPARATOR_TOKEN = '='
 
     @abstractmethod
-    def format_output(self, example: InputExample) -> str:
+    def format_output(self, example: InputExample, tokenizer=None) -> str:
         """
         Format output in augmented natural language.
         """
@@ -682,3 +682,47 @@ class MultiWozOutputFormat(BaseOutputFormat):
             if self.none_slot_value not in slot_value
         ])
         return belief_set
+
+@register_output_format
+class BigBioOutputFormat(BaseOutputFormat):
+    name = 'bigbio'
+
+    def format_output(self, example: InputExample, tokenizer=None) -> str:
+        """
+        Get output in augmented natural language, for example:
+        [belief] hotel price range cheap , hotel type hotel , duration two [belief]
+        augmentations = [([(type,), (tail.text,role), (...) ], #, #), (...)]
+        """
+        augmentations = []
+        for entity in example.entities:
+            augmentations.append(([(entity.type,)], entity.start, entity.end))
+        for event in example.events:
+            arguments = [(''.join(event.type),)]
+            for argument in event.arguments:
+                entity_arg = next((e for e in example.entities if e.id == argument.ref_id), None)
+                if not entity_arg:
+                    entity_arg = next((e for e in example.events if e.id == argument.ref_id), None)
+                if entity_arg:
+                    arguments.append((''.join(example.tokens[entity_arg.start:entity_arg.end]), argument.role))
+                else:
+                    arguments = []
+                    continue
+            if arguments:
+                augmentations.append((arguments, event.start, event.end))
+        return augment_sentence(example.tokens,
+                                augmentations,
+                                self.BEGIN_ENTITY_TOKEN,
+                                self.SEPARATOR_TOKEN,
+                                self.RELATION_SEPARATOR_TOKEN,
+                                self.END_ENTITY_TOKEN,
+                                tokenizer)
+
+
+    def run_inference(self, example: InputExample, output_sentence: str):
+        """
+        Process an output sentence to extract the predicted relation.
+
+        Return an empty list of entities and a single relation, so that it is compatible with joint entity-relation
+        extraction datasets.
+        """
+        return

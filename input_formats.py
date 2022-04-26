@@ -25,15 +25,18 @@ class BaseInputFormat(ABC):
     RELATION_SEPARATOR_TOKEN = '='
     QUERY_SEPARATOR_TOKEN = ':'
 
-    def format_input(self, example: InputExample, multitask=False, task_descriptor=None):
-        res = self._format_input(example=example)
+    def format_input(self, example: InputExample, multitask=False, task_descriptor=None, tokenizer=None):
+        if tokenizer:
+            res = self._format_input(example=example, tokenizer=tokenizer)
+        else:
+            res = self._format_input(example=example)
         if multitask:
             name = task_descriptor or example.dataset.task_descriptor or example.dataset.name
             res = f'{name} {self.QUERY_SEPARATOR_TOKEN} ' + res
         return res
 
     @abstractmethod
-    def _format_input(self, example: InputExample) -> str:
+    def _format_input(self, example: InputExample, tokenizer=None) -> str:
         raise NotImplementedError
 
 
@@ -104,3 +107,24 @@ class SRLInput(BaseInputFormat):
         words.insert(end, self.END_ENTITY_TOKEN)
         words.insert(start, self.BEGIN_ENTITY_TOKEN)
         return ' '.join(words)
+
+
+@register_input_format
+class BigBioInputFormat(BaseInputFormat):
+    name = 'bigbio'
+    insert_entities = True
+
+    def _format_input(self, example: InputExample, tokenizer=None):
+        augmentations = []
+        if self.insert_entities:
+            for entity in example.entities:
+                augmentations.append(([(entity.type,)], entity.start, entity.end))
+            return augment_sentence(example.tokens,
+                                    augmentations,
+                                    self.BEGIN_ENTITY_TOKEN,
+                                    self.SEPARATOR_TOKEN,
+                                    self.RELATION_SEPARATOR_TOKEN,
+                                    self.END_ENTITY_TOKEN,
+                                    tokenizer)
+        else:
+            return example

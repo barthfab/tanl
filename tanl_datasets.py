@@ -7,6 +7,7 @@ import copy
 import os
 import logging
 import json
+import datasets
 from itertools import islice
 from collections import Counter, defaultdict
 import numpy as np
@@ -14,10 +15,11 @@ import random
 import networkx as nx
 from typing import Dict, List, Tuple, Set
 import torch
-from transformers import PreTrainedTokenizer
+from segtok import segmenter
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, T5TokenizerFast
 
 from arguments import DataTrainingArguments
-from input_example import InputFeatures, EntityType, RelationType, Entity, Relation, Intent, InputExample, CorefDocument
+from input_example import InputFeatures, EntityType, RelationType, Entity, Relation, Intent, InputExample, CorefDocument, Event, Argument
 from base_dataset import BaseDataset
 from utils import get_precision_recall_f1
 from coreference_metrics import CorefAllMetrics
@@ -2464,3 +2466,97 @@ class MultiWoz(BaseDataset):
         return {
             'joint_accuracy': compute_accuracy(results),
         }
+
+@register_dataset
+class BigBioDatasets(BaseDataset):
+
+    name = 'bigbio_kb'
+
+
+    dataset_names = [
+                    "bionlp_st_2013_pc"]
+    '''"bionlp_st_2013_gro",
+    "bionlp_st_2013_ge",
+    "bionlp_st_2013_cg",
+    "bionlp_st_2011_rel",
+    "bionlp_st_2011_id",'''
+
+    def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
+        """
+        Load data for a single split (train, dev, or test).
+        """
+        data = []
+        examples = []
+        for dataset_name in self.dataset_names:
+            data.append(datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}', name=f"{dataset_name}_{self.name}", split=split))
+        complete_dataset = datasets.concatenate_datasets(data)
+        for dataset in complete_dataset:
+            for passage in dataset['passages']:
+                s_t = 0
+                sentences = segmenter.split_single(passage['text'][0])
+                encodings = self.tokenizer(sentences, return_offsets_mapping=True)
+                for guid, sentence in enumerate(sentences):
+                    entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
+                                and ta['offsets'][0][1] <= s_t + len(sentence)]
+                    events = [ta for ta in dataset['events'] if ta['trigger']['offsets'][0][0] >= s_t
+                              and ta['trigger']['offsets'][0][1] <= s_t + len(sentence)]
+                    example_entities = []
+                    example_events = []
+                    tokens = self.tokenizer.convert_ids_to_tokens(encodings['input_ids'][guid])
+                    token_starts = list(list(zip(*encodings["offset_mapping"][guid]))[0])
+                    for entity in entities:
+                        start, end = self.adapt_span(entity['offsets'][0][0] - s_t,
+                                                     entity['offsets'][0][1] - s_t,
+                                                     token_starts)
+                        example_entities.append(Entity(start=start,
+                                                       end=end,
+                                                       type=entity['type'],
+                                                       id=entity['id']))
+                    for event in events:
+                        example_arguments = []
+                        start, end = self.adapt_span(event['trigger']['offsets'][0][0] - s_t,
+                                                     event['trigger']['offsets'][0][1] - s_t,
+                                                     token_starts)
+                        for argument in event['arguments']:
+                            example_arguments.append(Argument(
+                                role=argument['role'],
+                                ref_id=argument['ref_id']
+                            ))
+                        example_events.append(Event(
+                            id=event['id'],
+                            type=event['type'],
+                            text=event['trigger']['text'],
+                            start=start,
+                            end=end,
+                            arguments=example_arguments
+                        ))
+                    examples.append(InputExample(
+                                                 id=passage['id'] + f"_{guid}",
+                                                 tokens=tokens,
+                                                 entities=example_entities,
+                                                 events=example_events
+                                                 ))
+                    s_t += len(sentence) + 1
+        return examples
+
+
+    def adapt_span(self, start, end, token_starts):
+        """
+        Adapt annotations to token spans
+        """
+        start = int(start)
+        end = int(end)
+
+        new_start = bisect.bisect_right(token_starts, start) - 1
+        new_end = bisect.bisect_left(token_starts, end)
+
+        return new_start, new_end
+
+
+    def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
+                         macro: bool = False) \
+            -> Dict[str, float]:
+        """
+        Evaluate model on this dataset.
+        """
+        return data_args

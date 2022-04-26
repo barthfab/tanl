@@ -62,6 +62,32 @@ class Relation:
 
 
 @dataclass
+class Argument:
+    """
+    An argument for an event
+    """
+    role: str                   # role of the argument
+    ref_id: Optional[str] = None    # id in the current training/test example
+
+
+@dataclass
+class Event:
+    """
+    An Event for bigbio schema.
+    {'id': 'PMID-10026184_E1',
+    'type': 'BindingToProtein',
+    'trigger': {'text': ['Interaction'], 'offsets': [[41, 52]]},
+    'arguments': [{'role': 'hasPatient2', 'ref_id': 'PMID-10026184_T4'}
+    """
+    id: str
+    type: str  # event type
+    text: str  # trigger in example
+    start: int  # start index in the sentence
+    end: int  # end index in the sentence
+    arguments: List[Argument] = None
+
+
+@dataclass
 class Intent:
     """
     The intent of an utterance.
@@ -86,6 +112,7 @@ class InputExample:
     entities: List[Entity] = None      # list of entities
     relations: List[Relation] = None   # list of relations
     intent: Optional[Intent] = None
+    events: List[Event] = None         # list of events
 
     # event extraction
     triggers: List[Entity] = None               # list of event triggers
