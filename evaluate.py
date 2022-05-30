@@ -51,7 +51,7 @@ def evaluate(model, dataset_name: str, data_args: DataTrainingArguments, tokeniz
     """
     model.eval()
 
-    device = torch.device("cuda", gpu)
+    device = torch.device("cuda") #cude , gpu
     model.to(device)
 
     logging.info(f'Batch size: {batch_size}')
@@ -66,4 +66,4 @@ def evaluate(model, dataset_name: str, data_args: DataTrainingArguments, tokeniz
         tokenizer=tokenizer, split=split, seed=seed, shuffle=False, is_eval=True,
     )
 
-    return test_dataset.evaluate_dataset(data_args=data_args, model=model, device=device, batch_size=batch_size)
+    return test_dataset.evaluate_dataset(data_args=data_args, model=model, device=device, batch_size=batch_size, tokenizer=tokenizer)

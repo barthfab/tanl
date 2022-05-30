@@ -8,9 +8,8 @@ from collections import defaultdict
 from typing import Tuple, List, Dict
 import numpy as np
 
-from input_example import InputFeatures, EntityType, RelationType, Entity, Relation, Intent, InputExample, CorefDocument
+from input_example import InputFeatures, EntityType, RelationType, Entity, Relation, Intent, InputExample, CorefDocument, Event, Argument
 from utils import augment_sentence, get_span
-
 
 OUTPUT_FORMATS = {}
 
@@ -79,7 +78,7 @@ class BaseOutputFormat(ABC):
         ]:
             padded_output_sentence = padded_output_sentence.replace(special_token, ' ' + special_token + ' ')
 
-        entity_stack = []   # stack of the entities we are extracting from the output sentence
+        entity_stack = []  # stack of the entities we are extracting from the output sentence
         # this is a list of lists [start, state, entity_name_tokens, entity_other_tokens]
         # where state is "name" (before the first | separator) or "other" (after the first | separator)
 
@@ -266,9 +265,9 @@ class JointEROutputFormat(BaseOutputFormat):
         Return the predicted entities, predicted relations, and four booleans which describe if certain kinds of errors
         occurred (wrong reconstruction of the sentence, label error, entity error, augmented language format error).
         """
-        label_error = False     # whether the output sentence has at least one non-existing entity or relation type
-        entity_error = False    # whether there is at least one relation pointing to a non-existing head entity
-        format_error = False    # whether the augmented language format is invalid
+        label_error = False  # whether the output sentence has at least one non-existing entity or relation type
+        entity_error = False  # whether there is at least one relation pointing to a non-existing head entity
+        format_error = False  # whether the augmented language format is invalid
 
         if output_sentence.count(self.BEGIN_ENTITY_TOKEN) != output_sentence.count(self.END_ENTITY_TOKEN):
             # the parentheses do not match
@@ -352,7 +351,7 @@ class JointICSLFormat(JointEROutputFormat):
     name = 'joint_icsl'
     BEGIN_INTENT_TOKEN = "(("
     END_INTENT_TOKEN = "))"
-        
+
     def format_output(self, example: InputExample) -> str:
         """
         Get output in augmented natural language.
@@ -367,13 +366,14 @@ class JointICSLFormat(JointEROutputFormat):
                 entity.end,
             ))
 
-        augmented_sentence = augment_sentence(example.tokens, augmentations, self.BEGIN_ENTITY_TOKEN, self.SEPARATOR_TOKEN,
-                                self.RELATION_SEPARATOR_TOKEN, self.END_ENTITY_TOKEN)
-        
+        augmented_sentence = augment_sentence(example.tokens, augmentations, self.BEGIN_ENTITY_TOKEN,
+                                              self.SEPARATOR_TOKEN,
+                                              self.RELATION_SEPARATOR_TOKEN, self.END_ENTITY_TOKEN)
+
         return (f"(( {example.intent.natural} )) " + augmented_sentence)
 
     def run_inference(self, example: InputExample, output_sentence: str,
-            entity_types: Dict[str, EntityType] = None) -> Tuple[str, set]:
+                      entity_types: Dict[str, EntityType] = None) -> Tuple[str, set]:
         entity_types = set(entity_type.natural for entity_type in entity_types.values())
 
         # parse output sentence
@@ -386,10 +386,10 @@ class JointICSLFormat(JointEROutputFormat):
         if self.BEGIN_INTENT_TOKEN in output_sentence_tokens and \
                 self.END_INTENT_TOKEN in output_sentence_tokens:
             intent = output_sentence.split(self.BEGIN_INTENT_TOKEN)[1].split(self.END_INTENT_TOKEN)[0].strip()
-            output_sentence = output_sentence.split(self.END_INTENT_TOKEN)[1]   # remove intent from sentence
+            output_sentence = output_sentence.split(self.END_INTENT_TOKEN)[1]  # remove intent from sentence
 
-        label_error = False     # whether the output sentence has at least one non-existing entity or relation type
-        format_error = False    # whether the augmented language format is invalid
+        label_error = False  # whether the output sentence has at least one non-existing entity or relation type
+        format_error = False  # whether the augmented language format is invalid
 
         if output_sentence.count(self.BEGIN_ENTITY_TOKEN) != output_sentence.count(self.END_ENTITY_TOKEN):
             # the parentheses do not match
@@ -418,7 +418,7 @@ class JointICSLFormat(JointEROutputFormat):
                 label_error = True
 
         return intent, predicted_entities, wrong_reconstruction, label_error, format_error
-  
+
 
 @register_output_format
 class EventOutputFormat(JointEROutputFormat):
@@ -676,12 +676,13 @@ class MultiWozOutputFormat(BaseOutputFormat):
         start = output_sentence.find("[belief]")
         end = output_sentence.rfind("[belief]")
 
-        label_span = output_sentence[start+len("[belief]"):end]
+        label_span = output_sentence[start + len("[belief]"):end]
         belief_set = set([
             slot_value.strip() for slot_value in label_span.split(",")
             if self.none_slot_value not in slot_value
         ])
         return belief_set
+
 
 @register_output_format
 class BigBioOutputFormat(BaseOutputFormat):
@@ -717,12 +718,68 @@ class BigBioOutputFormat(BaseOutputFormat):
                                 self.END_ENTITY_TOKEN,
                                 tokenizer)
 
-
-    def run_inference(self, example: InputExample, output_sentence: str):
+    def run_inference(self, example: InputExample, output_sentence: str, offset_mapping=None, entity_types: list[str]=None,
+                      event_types: list[str] = None, entity_offset=None,  event_offset=None,):
         """
         Process an output sentence to extract the predicted relation.
 
         Return an empty list of entities and a single relation, so that it is compatible with joint entity-relation
         extraction datasets.
         """
-        return
+        predicted_entities, wrong_reconstruction = self.parse_output_sentence(example, output_sentence)
+        output_entities = []
+        output_events = []
+        output_lines = []
+        format_error = False
+        argument_error = False
+
+        for guid, predicted_entity in enumerate(predicted_entities):
+            entity_name, tags, start, end = predicted_entity
+            if len(tags) == 0 or len(tags[0]) > 1:
+                # we do not have a tag for the entity type
+                format_error = True
+                continue
+            # is the entity an argument or an event
+            if tags[0][0].strip() in entity_types:
+                output_lines.append(f'T{entity_offset + guid + 1}\t{tags[0][0]} {offset_mapping[start][0]} {offset_mapping[end][1]}\t{entity_name}\n')
+                output_entities.append(Entity(
+                    type=tags[0][0],
+                    start=start,
+                    end=end,
+                    id=f'T{entity_offset + guid + 1}'
+                ))
+            elif tags[0][0].strip() in event_types:
+                output_events.append(Event(
+                    id=f'E{entity_offset + guid + 1}',
+                    type=tags[0][0],
+                    text=entity_name,
+                    start=start,
+                    end=end,
+                    arguments=tags[1:],
+                ))
+
+                output_lines.append(f'T{entity_offset + guid + 1}\t{tags[0][0]} {offset_mapping[start][0]} {offset_mapping[end][1]}\t{entity_name}\n')
+        for guid, event in enumerate(output_events):
+            arguments = []
+            string_args = ""
+            for tag in event.arguments:
+                tag_name, tag_type = tag
+                argument = [e for e in output_lines if e.split('\t')[-1] == tag_name]
+                if not argument:
+                    argument_error = True
+                    continue
+                if len(argument) >= 2:
+                    closest_start = min(argument, key=lambda x: abs(int(x.split('\t')[1].split(' ')[1]) - event.start))
+                    arguments.append(Argument(role=tag_type,
+                                              ref_id=closest_start.split('\t')[0]
+                                             ))
+                    string_args += " " + tag_type + ":" + closest_start.split('\t')[0]
+                else:
+                    arguments.append(Argument(role=tag_type,
+                                              ref_id=argument[0].split('\t')[0]
+                                              ))
+                    string_args += " " + tag_type + ":" + argument[0].split('\t')[0]
+            event.arguments = arguments
+            output_lines.append(f'E{event_offset + guid + 1}\t{event.type}:T{event.id[1:]}{string_args}\n')
+
+        return output_entities, output_events, output_lines, format_error, argument_error

@@ -17,9 +17,10 @@ from typing import Dict, List, Tuple, Set
 import torch
 from segtok import segmenter
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, T5TokenizerFast
-
+from datetime import datetime
 from arguments import DataTrainingArguments
-from input_example import InputFeatures, EntityType, RelationType, Entity, Relation, Intent, InputExample, CorefDocument, Event, Argument
+from input_example import InputFeatures, EntityType, RelationType, Entity, Relation, Intent, InputExample, \
+    CorefDocument, Event, Argument
 from base_dataset import BaseDataset
 from utils import get_precision_recall_f1
 from coreference_metrics import CorefAllMetrics
@@ -70,8 +71,8 @@ class JointERDataset(BaseDataset):
     entity_types = None
     relation_types = None
 
-    natural_entity_types = None     # dictionary from entity types given in the dataset to the natural strings to use
-    natural_relation_types = None   # dictionary from relation types given in the dataset to the natural strings to use
+    natural_entity_types = None  # dictionary from entity types given in the dataset to the natural strings to use
+    natural_relation_types = None  # dictionary from relation types given in the dataset to the natural strings to use
 
     default_output_format = 'joint_er'
 
@@ -237,11 +238,11 @@ class JointERDataset(BaseDataset):
 
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             new_result = self.evaluate_example(
-                    example=example,
-                    output_sentence=output_sentence,
-                    model=model,
-                    tokenizer=self.tokenizer,
-                )
+                example=example,
+                output_sentence=output_sentence,
+                model=model,
+                tokenizer=self.tokenizer,
+            )
             results += new_result
 
         entity_precision, entity_recall, entity_f1 = get_precision_recall_f1(
@@ -433,7 +434,7 @@ class NYTDataset(JointERDataset):
 
                 for y in x['spo_details']:
                     entity1_start, entity1_end, entity1_type, relation_type, \
-                        entity2_start, entity2_end, entity2_type = y
+                    entity2_start, entity2_end, entity2_type = y
 
                     entity1 = Entity(type=self.entity_types[entity1_type], start=entity1_start, end=entity1_end)
                     entity2 = Entity(type=self.entity_types[entity2_type], start=entity2_start, end=entity2_end)
@@ -523,7 +524,7 @@ class ACE2005REDataset(JointERDataset):
 
                     if len(document['ner'][i]) > 0:
                         entities = [
-                            Entity(type=self.entity_types[entity_type], start=start-offset, end=end-offset+1)
+                            Entity(type=self.entity_types[entity_type], start=start - offset, end=end - offset + 1)
                             for start, end, entity_type in document['ner'][i]
                         ]
 
@@ -532,15 +533,17 @@ class ACE2005REDataset(JointERDataset):
                         skip = False
                         for start1, end1, start2, end2, relation_type in document['relations'][i]:
                             # find entities
-                            if len([e for e in entities if e.start == start1-offset and e.end == end1-offset+1]) > 1 \
+                            if len([e for e in entities if
+                                    e.start == start1 - offset and e.end == end1 - offset + 1]) > 1 \
                                     or \
-                                    len([e for e in entities if e.start == start2-offset and e.end == end2-offset+1]) \
+                                    len([e for e in entities if
+                                         e.start == start2 - offset and e.end == end2 - offset + 1]) \
                                     > 1:
                                 skip = True
                                 break
 
-                            [head] = [e for e in entities if e.start == start1-offset and e.end == end1-offset+1]
-                            [tail] = [e for e in entities if e.start == start2-offset and e.end == end2-offset+1]
+                            [head] = [e for e in entities if e.start == start1 - offset and e.end == end1 - offset + 1]
+                            [tail] = [e for e in entities if e.start == start2 - offset and e.end == end2 - offset + 1]
 
                             relations.append(
                                 Relation(type=self.relation_types[relation_type], head=head, tail=tail)
@@ -609,12 +612,12 @@ class NERDataset(JointERDataset):
             current_entity_type = None
 
             for j, label in enumerate(labels + [None]):
-                previous_label = labels[j-1] if j > 0 else None
+                previous_label = labels[j - 1] if j > 0 else None
                 if (label is None and previous_label is not None) \
                         or (label is not None and previous_label is None) \
                         or (label is not None and previous_label is not None and (
-                            label[2:] != previous_label[2:] or label.startswith('B-') or label.startswith('S-')
-                        )):
+                        label[2:] != previous_label[2:] or label.startswith('B-') or label.startswith('S-')
+                )):
                     if current_entity_start is not None:
                         # close current entity
                         entities.append(Entity(
@@ -766,13 +769,12 @@ class SnipsDataset(NERDataset):
                         if tag_type in self.natural_entity_types else tag_type
                     ),
                     start=ii,
-                    end=ii+1,
+                    end=ii + 1,
                 )
                 entities.append(current_entity)
             elif el.startswith('I-'):
                 current_entity.end = ii + 1
         return entities
-
 
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
@@ -782,7 +784,7 @@ class SnipsDataset(NERDataset):
         examples = []
 
         with open(file_path, 'r') as f:
-            data = f.readlines()[1:]    # skip header
+            data = f.readlines()[1:]  # skip header
             for id, example in enumerate(data):
                 uid, cid, turn, author, utterance, short_intent, act, slot_labels = example.strip().split('\t')
                 tokens = utterance.split()
@@ -816,7 +818,6 @@ class SnipsDataset(NERDataset):
 
         return examples
 
-
     def evaluate_example(self, example: InputExample, output_sentence: str, model=None, tokenizer=None) -> Counter:
         """
         Evaluate an output sentence on a single example of this dataset.
@@ -826,6 +827,7 @@ class SnipsDataset(NERDataset):
             example,
             output_sentence,
             entity_types=self.entity_types,
+            event_types=self.even_types,
         )
         predicted_intent, predicted_entities, wrong_reconstruction, label_error, format_error = res
 
@@ -847,7 +849,6 @@ class SnipsDataset(NERDataset):
         # compute correct intent
         correct_intent = int(predicted_intent == gt_intent.natural)
 
-
         assert len(correct_entities) <= len(predicted_entities)
         assert len(correct_entities) <= len(gt_entities)
         assert len(correct_entities_no_type) <= len(predicted_entities_no_type)
@@ -857,7 +858,7 @@ class SnipsDataset(NERDataset):
             'num_sentences': 1,
             'wrong_reconstructions': 1 if wrong_reconstruction else 0,
             'label_error': 1 if label_error else 0,
-            'format_error': 1 if format_error else 0, 
+            'format_error': 1 if format_error else 0,
             'predicted_intent': 1 if len(predicted_intent) > 0 else 0,
             'gt_intent': 1,
             'correct_intent': correct_intent,
@@ -868,7 +869,7 @@ class SnipsDataset(NERDataset):
             'predicted_entities_no_type': len(predicted_entities_no_type),
             'correct_entities_no_type': len(correct_entities_no_type),
         })
-        
+
         if self.intents is not None:
             for intent_type in self.intents.values():
                 predicted = int(predicted_intent == intent_type.natural)
@@ -899,11 +900,11 @@ class SnipsDataset(NERDataset):
 
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             new_result = self.evaluate_example(
-                    example=example,
-                    output_sentence=output_sentence,
-                    model=model,
-                    tokenizer=self.tokenizer,
-                )
+                example=example,
+                output_sentence=output_sentence,
+                model=model,
+                tokenizer=self.tokenizer,
+            )
             results += new_result
 
         entity_precision, entity_recall, entity_f1 = get_precision_recall_f1(
@@ -1035,8 +1036,8 @@ class ATISDataset(SnipsDataset):
                 tag_type = el[2:]
                 if '.' in tag_type:
                     natural = ' '.join([self.natural_entity_types[tag_part]
-                            if tag_part in self.natural_entity_types else tag_part
-                            for tag_part in tag_type.split('.')])
+                                        if tag_part in self.natural_entity_types else tag_part
+                                        for tag_part in tag_type.split('.')])
                 else:
                     natural = self.natural_entity_types[tag_type] if tag_type in self.natural_entity_types else tag_type
                 current_entity = Entity(
@@ -1045,7 +1046,7 @@ class ATISDataset(SnipsDataset):
                         natural=natural
                     ),
                     start=ii,
-                    end=ii+1,
+                    end=ii + 1,
                 )
                 entities.append(current_entity)
             elif el.startswith('I-'):
@@ -1203,7 +1204,7 @@ class ACE2005EventTriggerDataset(JointERDataset):
         """
         examples = []
         file_path = os.path.join(self.data_dir(), f'{self.data_name}_{split}.json')
-        
+
         with open(file_path, 'r') as f:
             data = json.load(f)
             logging.info(f"Loaded {len(data)} sentences for split {split} of {self.name}")
@@ -1261,7 +1262,7 @@ class ACE2005EventArgumentDataset(ACE2005EventTriggerDataset):
 
                     triggers = [
                         Entity(id=j, type=self.entity_types[y['type']], start=y['start'], end=y['end'])
-                        for j, y in enumerate(x['triggers'][trigger_id:trigger_id+1]) if len(x['triggers']) > 0
+                        for j, y in enumerate(x['triggers'][trigger_id:trigger_id + 1]) if len(x['triggers']) > 0
                     ]
                     assert len(triggers) <= 1, 'no more than 1 trigger'
 
@@ -1341,10 +1342,10 @@ class ACE2005EventArgumentDataset(ACE2005EventTriggerDataset):
 
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             new_result = self.evaluate_example(
-                    example=example,
-                    output_sentence=output_sentence,
-                    tokenizer=self.tokenizer,
-                )
+                example=example,
+                output_sentence=output_sentence,
+                tokenizer=self.tokenizer,
+            )
             results += new_result
 
         relation_precision, relation_recall, relation_f1 = get_precision_recall_f1(
@@ -1394,17 +1395,17 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
         examples = []
         name = self.name if self.data_name is None else self.data_name
         file_path = os.path.join(self.data_dir(), f'{name}_{split}.json')
-        
+
         with open(file_path, 'r') as f:
             data = json.load(f)
             logging.info(f"Loaded {len(data)} sentences for split {split} of {self.name}")
-            
+
             for i, x in enumerate(data):
                 entities = [
                     Entity(id=j, type=self.entity_types[y['type']], start=y['start'], end=y['end'])
                     for j, y in enumerate(x['entities'])
                 ]
-                
+
                 triggers = [
                     Entity(id=j, type=self.entity_types[y['type']], start=y['start'], end=y['end'])
                     for j, y in enumerate(x['triggers'])
@@ -1417,9 +1418,9 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
                     )
                     for y in x['relations']
                 ]
-                
+
                 tokens = x['tokens']
-                
+
                 example = InputExample(
                     id=f'{split}-{i}',
                     tokens=tokens,
@@ -1427,11 +1428,11 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
                     triggers=triggers,
                     relations=relations,
                 )
-                
+
                 examples.append(example)
-        
+
         return examples
-    
+
     def evaluate_argument(self, output_format, example_argument_single_trigger: InputExample, example: InputExample,
                           argument_output_sentence: str) -> Tuple[Set[tuple], Set[tuple], Set[tuple]]:
         """
@@ -1442,7 +1443,7 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
                                         argument_output_sentence,
                                         entity_types=self.entity_types,
                                         relation_types=self.relation_types)
-        
+
         # filter relation tuples for argument classification
         # since we don't need the entity type to be predicted correct
 
@@ -1456,12 +1457,12 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
         for relation in predicted_relations:
             if relation[2][0] in self.relation_schemas and relation[0] in self.relation_schemas[relation[2][0]]:
                 filtered_predicted_relations.add(filter_relation_tuple(relation))
-        
+
         predicted_relations = filtered_predicted_relations
-        
+
         # compute correct relations
         correct_relations = predicted_relations & gt_relations
-        
+
         return predicted_relations, gt_relations, correct_relations
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int, macro: bool = False) \
@@ -1495,7 +1496,7 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
                 trig_list[0] = 'TYPE'
                 gt_triggers_notype.add(tuple(trig_list))
             correct_triggers_notype = predicted_triggers_notype & gt_triggers_notype
-            
+
             # phase 2: argument classification
             all_gt_relations, all_predicted_relations, all_correct_relations = set(), set(), set()
             for trigger in predicted_triggers:
@@ -1531,7 +1532,7 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
                 all_gt_relations = all_gt_relations.union(gt_relations)
                 all_predicted_relations = all_predicted_relations.union(predicted_relations)
                 all_correct_relations = all_correct_relations.union(correct_relations)
-                
+
             all_predicted_relations_notype = set()
             all_gt_relations_notype = set()
             for rel in all_predicted_relations:
@@ -1555,9 +1556,9 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
                 'correct_relations': len(all_correct_relations),
                 'correct_relations_notype': len(all_correct_relations_notype)
             })
-            
+
             results += res
-        
+
         trigger_precision, trigger_recall, trigger_f1 = get_precision_recall_f1(
             num_correct=results['correct_triggers'],
             num_predicted=results['predicted_triggers'],
@@ -1578,7 +1579,7 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
             num_predicted=results['predicted_relations'],
             num_gt=results['gt_relations'],
         )
-        
+
         full_results = {
             'relation_precision': relation_precision,
             'relation_recall': relation_recall,
@@ -1593,7 +1594,7 @@ class ACE2005EventDataset(ACE2005EventArgumentDataset):
             'trigger_recall_notype': trigger_recall_notype,
             'trigger_f1_notype': trigger_f1_notype,
         }
-        
+
         return full_results
 
 
@@ -1605,7 +1606,7 @@ class CoNLL12CorefDataset(BaseDataset):
     name = 'conll12_coref'
     default_output_format = 'coref'
 
-    documents = None    # list of documents
+    documents = None  # list of documents
 
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
@@ -1650,12 +1651,12 @@ class CoNLL12CorefDataset(BaseDataset):
                 chunk_id = 0
                 while pos < len(tokens):
                     # create a chunk starting at this position
-                    chunk_tokens = tokens[pos:pos+chunk_size]
+                    chunk_tokens = tokens[pos:pos + chunk_size]
 
                     chunk_groups = []
                     for group in groups:
                         mentions = [
-                            Entity(start=mention.start-pos, end=mention.end-pos, type=mention.type)
+                            Entity(start=mention.start - pos, end=mention.end - pos, type=mention.type)
                             for mention in group
                             if mention.start >= pos and mention.end <= pos + chunk_size
                         ]
@@ -1802,7 +1803,7 @@ class RelationClassificationDataset(JointERDataset):
                 attention_mask=x['attention_mask'].to(model.device),
                 labels=y['input_ids'].to(model.device)
             )
-            scores.append(res[0].cpu().detach())    # res[0] is the log likelihood
+            scores.append(res[0].cpu().detach())  # res[0] is the log likelihood
 
         scores = np.array(scores)
         min_idx = scores.argmin()
@@ -1823,7 +1824,7 @@ class FewRelFull(RelationClassificationDataset):
     natural_entity_types = {
         'head': 'head',
         'tail': 'tail',
-    }   # fake entity types corresponding to head and tail of a relation
+    }  # fake entity types corresponding to head and tail of a relation
 
     default_input_format = 'rel_input'
     default_output_format = 'rel_output'
@@ -1832,7 +1833,7 @@ class FewRelFull(RelationClassificationDataset):
         """
         Load relation types from the pid2name.json file provided with the dataset.
         """
-        super().load_schema()   # this is to initialize the fake entity types 'head' and 'tail'
+        super().load_schema()  # this is to initialize the fake entity types 'head' and 'tail'
 
         with open(os.path.join(self.data_dir(), 'pid2name.json'), 'r') as f:
             data = json.load(f)
@@ -1926,13 +1927,13 @@ class FewRelEpisodic(FewRelFull):
     default_input_format = 'rel_input'
     default_output_format = 'rel_output'
 
-    target_relation_types = None    # the relation types involved in this episode (there is self.num_ways of them)
+    target_relation_types = None  # the relation types involved in this episode (there is self.num_ways of them)
 
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
         Load data for a single split (train, dev, or test).
         """
-        examples_by_type = self.load_data_by_relation_type(split='dev')   # we use the dev set for episodic experiments
+        examples_by_type = self.load_data_by_relation_type(split='dev')  # we use the dev set for episodic experiments
 
         # set few-shot parameters
         num_ways, num_shots, num_queries = self.data_args.num_ways, self.data_args.num_shots, self.data_args.num_query
@@ -2177,7 +2178,7 @@ class CONLL05SRL(NERDataset):
                         if tag_type in self.natural_entity_types else tag_type
                     ),
                     start=ii,
-                    end=ii+1,
+                    end=ii + 1,
                 )
                 if tag_type == 'V':
                     predicate = current_entity
@@ -2186,7 +2187,7 @@ class CONLL05SRL(NERDataset):
             elif el.startswith('I-'):
                 current_entity.end = ii + 1
         return entities, predicate
-  
+
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
         Load data for a single split (train, dev, or test).
@@ -2239,7 +2240,7 @@ class CONLL12SRL(NERDataset):
             else:
                 word_idx.append(word_idx[ii - 1])
         return word_idx
-  
+
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
         Load data for a single split (train, dev, or test).
@@ -2269,12 +2270,12 @@ class CONLL12SRL(NERDataset):
                         values = arg['values'][0]
                         arg_start_char, arg_end_char = values['start'], values['end']
                         arg_start_word, arg_end_word = char_to_word_idx[arg_start_char], \
-                            char_to_word_idx[arg_end_char - 1] + 1
+                                                       char_to_word_idx[arg_end_char - 1] + 1
                         arg_name = arg['name']
                         argument = Entity(
                             id=None,
                             type=EntityType(short=arg_name, natural=self.natural_entity_types[arg_name]
-                                            if arg_name in self.natural_entity_types else arg_name),
+                            if arg_name in self.natural_entity_types else arg_name),
                             start=arg_start_word,
                             end=arg_end_word
                         )
@@ -2467,19 +2468,22 @@ class MultiWoz(BaseDataset):
             'joint_accuracy': compute_accuracy(results),
         }
 
+
 @register_dataset
 class BigBioDatasets(BaseDataset):
-
     name = 'bigbio_kb'
 
-
     dataset_names = [
-                    "bionlp_st_2013_pc"]
+        "bionlp_st_2013_pc"]
     '''"bionlp_st_2013_gro",
     "bionlp_st_2013_ge",
     "bionlp_st_2013_cg",
     "bionlp_st_2011_rel",
     "bionlp_st_2011_id",'''
+
+    entity_types = []
+    eval_run = 0
+    event_types = []
 
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
@@ -2488,13 +2492,20 @@ class BigBioDatasets(BaseDataset):
         data = []
         examples = []
         for dataset_name in self.dataset_names:
-            data.append(datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}', name=f"{dataset_name}_{self.name}", split=split))
+            data.append(
+                datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}', name=f"{dataset_name}_{self.name}",
+                                      split=split))
         complete_dataset = datasets.concatenate_datasets(data)
         for dataset in complete_dataset:
             for passage in dataset['passages']:
                 s_t = 0
+                header_offset = 0
+                headline = passage['text'][0].split('\n')[0]
+                if headline.endswith(' '):
+                    header_offset = 1
                 sentences = segmenter.split_single(passage['text'][0])
                 encodings = self.tokenizer(sentences, return_offsets_mapping=True)
+
                 for guid, sentence in enumerate(sentences):
                     entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
                                 and ta['offsets'][0][1] <= s_t + len(sentence)]
@@ -2502,8 +2513,8 @@ class BigBioDatasets(BaseDataset):
                               and ta['trigger']['offsets'][0][1] <= s_t + len(sentence)]
                     example_entities = []
                     example_events = []
-                    tokens = self.tokenizer.convert_ids_to_tokens(encodings['input_ids'][guid])
-                    token_starts = list(list(zip(*encodings["offset_mapping"][guid]))[0])
+                    tokens = self.tokenizer.convert_ids_to_tokens(encodings['input_ids'][guid])[1:-1]
+                    token_starts = list(list(zip(*encodings["offset_mapping"][guid]))[0])[1:-2]
                     for entity in entities:
                         start, end = self.adapt_span(entity['offsets'][0][0] - s_t,
                                                      entity['offsets'][0][1] - s_t,
@@ -2512,11 +2523,15 @@ class BigBioDatasets(BaseDataset):
                                                        end=end,
                                                        type=entity['type'],
                                                        id=entity['id']))
+                        if entity['type'] not in self.entity_types:
+                            self.entity_types.append(entity['type'])
                     for event in events:
                         example_arguments = []
                         start, end = self.adapt_span(event['trigger']['offsets'][0][0] - s_t,
                                                      event['trigger']['offsets'][0][1] - s_t,
                                                      token_starts)
+                        if event['type'] not in self.event_types:
+                            self.event_types.append(event['type'])
                         for argument in event['arguments']:
                             example_arguments.append(Argument(
                                 role=argument['role'],
@@ -2531,14 +2546,15 @@ class BigBioDatasets(BaseDataset):
                             arguments=example_arguments
                         ))
                     examples.append(InputExample(
-                                                 id=passage['id'] + f"_{guid}",
-                                                 tokens=tokens,
-                                                 entities=example_entities,
-                                                 events=example_events
-                                                 ))
+                        id=passage['id'] + f"_{guid}",
+                        tokens=tokens,
+                        entities=example_entities,
+                        events=example_events
+                    ))
+                    if guid == 0 and header_offset > 0:
+                        s_t += header_offset
                     s_t += len(sentence) + 1
-        return examples
-
+        return examples[0:4]
 
     def adapt_span(self, start, end, token_starts):
         """
@@ -2552,38 +2568,57 @@ class BigBioDatasets(BaseDataset):
 
         return new_start, new_end
 
-
-
-
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
-                         macro: bool = False) \
+                         macro: bool = False, tokenizer=None) \
             -> Dict[str, float]:
         """
         Evaluate model on this dataset.
         """
-
-        def compute_accuracy(results_dict):
-            num_examples = float(sum(results_dict["num_sentences"]))
-            return sum(results_dict["correct_state"]) / num_examples
-
-        results = {
-            'num_sentences': [],
-            'correct_state': [],
-            'raw_gold_state': [],
-            'raw_pred_state': [],
-            'list_pred_state': [],
-            'list_gold_state': []
-        }
-
+        output_a2 = {}
+        output_txt = {}
+        given_ids = {}
+        now = datetime.now()
+        current_time = now.strftime("%Y_%m_%d_%H")
+        self.eval_run += 1
+        if not os.path.exists(f'./output_files/{current_time}/Epoch_{self.eval_run}'):
+            os.makedirs(f'./output_files/{current_time}/Epoch_{self.eval_run}')
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
-            new_result = self.evaluate(
+            id = example.id.split('_')[0]
+            if id not in given_ids:
+                given_ids[id] = {'entities': 0,
+                                 'events': 0}
+            a2, txt, entities, events = self.evaluate_example(example=example,
+                                                              output_sentence=output_sentence,
+                                                              tokenizer=tokenizer,
+                                                              entity_offset=given_ids[id]['entities'],
+                                                              event_offset=given_ids[id]['events'],)
+
+            if id in output_a2:
+                output_a2[id].extend(a2)
+                given_ids[id]['entities'] += len(entities)
+                given_ids[id]['events'] += len(events)
+            else:
+                output_a2[id] = a2
+        for name, lines in output_a2.items():
+            with open(f'./output_files/{current_time}/Epoch_{self.eval_run}/{name}.a2', 'a') as f:
+                f.writelines(lines)
+        return {'dir': f'./output_files/{current_time}/Epoch_{self.eval_run}'}
+
+    def evaluate_example(self, example: InputExample, output_sentence: str, model=None,
+                         tokenizer=None, event_offset=None, entity_offset=None) -> Counter:
+        """
+        Evaluate an output sentence on a single example of this dataset.
+        """
+        # extract entities and relations from output sentence
+        encodings = self.tokenizer(output_sentence, return_offsets_mapping=True)
+        predicted_entities, predicted_events, output_lines, format_error, argument_error = \
+            self.output_format.run_inference(
                 example=example,
                 output_sentence=output_sentence,
+                offset_mapping=encodings['offset_mapping'],
+                entity_types=self.entity_types,
+                event_types=self.event_types,
+                entity_offset=entity_offset,
+                event_offset=event_offset,
             )
-
-            for k, v in new_result.items():
-                results[k].append(v)
-
-        return {
-            'joint_accuracy': compute_accuracy(results),
-        }
+        return output_lines, output_sentence, predicted_entities, predicted_events

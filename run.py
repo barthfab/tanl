@@ -24,6 +24,7 @@ from utils import get_episode_indices
 
 sys.path.append("/vol/fob-vol7/mi19/barthfab/biomedical")
 
+
 def main():
     assert torch.cuda.is_available(), 'CUDA not available'
 
@@ -228,9 +229,9 @@ def main():
 
             # start trainer
             logging.info('Start training')
-            trainer.train(
-                model_path=model_args.model_name_or_path
-            )
+            trainer.train()
+            #    model_path=model_args.model_name_or_path
+            #)
 
             # save model parameters
             trainer.save_model(episode_output_dir)
@@ -240,7 +241,7 @@ def main():
             # should we evaluate on dev, test, or both?
             evaluation_splits = []
             if training_args.do_eval:
-                evaluation_splits.append('dev')
+                evaluation_splits.append('validation')
             if training_args.do_predict:
                 evaluation_splits.append('test')
 
@@ -292,8 +293,7 @@ def main():
 
                 res = evaluate(
                     model=model, dataset_name=dataset_name, data_args=data_args, tokenizer=tokenizer, split=split,
-                    seed=ep_idx, batch_size=training_args.per_device_eval_batch_size, gpu=args.gpu
-                )
+                    seed=ep_idx, batch_size=training_args.per_device_eval_batch_size, gpu=args.gpu)
                 # store results
                 evaluation_results[comb].append(res)
 

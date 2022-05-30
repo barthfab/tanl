@@ -125,9 +125,11 @@ def augment_sentence(tokens: List[str], augmentations: List[Tuple[List[tuple], i
         entity_tree[j] = []
 
     if tokenizer:
-        return tokenizer.convert_tokens_to_string(expand_tokens(
+        result = tokenizer.convert_tokens_to_string(expand_tokens(
             tokens, augmentations, entity_tree, root, begin_entity_token, sep_token, relation_sep_token, end_entity_token
         ))
+        return result
+    #todo
     return ' '.join(expand_tokens(
         tokens, augmentations, entity_tree, root, begin_entity_token, sep_token, relation_sep_token, end_entity_token
     ))
