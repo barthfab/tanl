@@ -2620,5 +2620,14 @@ class BigBioDatasets(BaseDataset):
                 event_types=self.event_types,
                 entity_offset=entity_offset,
                 event_offset=event_offset,
+                tokenizer=tokenizer,
             )
         return output_lines, output_sentence, predicted_entities, predicted_events
+
+    def offset_mapping (self, sentence):
+        sentence = sentence.split()
+        offsets = []
+        curr_len = 0
+        for token in sentence:
+            offsets.append((curr_len, curr_len + len(token)))
+            curr_len += len(token) + 1

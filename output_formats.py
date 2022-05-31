@@ -41,7 +41,7 @@ class BaseOutputFormat(ABC):
         """
         raise NotImplementedError
 
-    def parse_output_sentence(self, example: InputExample, output_sentence: str) -> Tuple[list, bool]:
+    def parse_output_sentence(self, example: InputExample, output_sentence: str, tokenizer=None) -> Tuple[list, bool]:
         """
         Parse an output sentence in augmented language and extract inferred entities and tags.
         Return a pair (predicted_entities, wrong_reconstruction), where:
@@ -81,8 +81,12 @@ class BaseOutputFormat(ABC):
         entity_stack = []  # stack of the entities we are extracting from the output sentence
         # this is a list of lists [start, state, entity_name_tokens, entity_other_tokens]
         # where state is "name" (before the first | separator) or "other" (after the first | separator)
-
-        for token in padded_output_sentence.split():
+        if tokenizer:
+            encodings = tokenizer(padded_output_sentence, return_offsets_mapping=True)
+            tokens = tokenizer.convert_ids_to_tokens(encodings['input_ids'])
+        else:
+            tokens = padded_output_sentence.split()
+        for token in tokens:
             if len(token) == 0:
                 continue
 
@@ -94,8 +98,10 @@ class BaseOutputFormat(ABC):
             elif token == self.END_ENTITY_TOKEN and len(entity_stack) > 0:
                 # end entity
                 start, state, entity_name_tokens, entity_other_tokens = entity_stack.pop()
-
-                entity_name = ' '.join(entity_name_tokens).strip()
+                if tokenizer:
+                    entity_name = tokenizer.convert_tokens_to_string(entity_name_tokens).strip()
+                else:
+                    entity_name = ' '.join(entity_name_tokens).strip()
                 end = len(output_tokens)
 
                 tags = []
@@ -108,7 +114,10 @@ class BaseOutputFormat(ABC):
 
                 if state == "other" and len(splits) > 0:
                     for x in splits:
-                        tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
+                        if tokenizer:
+                            tags.append(tuple(tokenizer.convert_tokens_to_string.split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
+                        else:
+                            tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
 
                 unmatched_predicted_entities.append((entity_name, tags, start, end))
 
@@ -718,15 +727,15 @@ class BigBioOutputFormat(BaseOutputFormat):
                                 self.END_ENTITY_TOKEN,
                                 tokenizer)
 
-    def run_inference(self, example: InputExample, output_sentence: str, offset_mapping=None, entity_types: list[str]=None,
-                      event_types: list[str] = None, entity_offset=None,  event_offset=None,):
+    def run_inference(self, example: InputExample, output_sentence: str, tokenizer=None, entity_types: list[str]=None,
+                      event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):
         """
         Process an output sentence to extract the predicted relation.
 
         Return an empty list of entities and a single relation, so that it is compatible with joint entity-relation
         extraction datasets.
         """
-        predicted_entities, wrong_reconstruction = self.parse_output_sentence(example, output_sentence)
+        predicted_entities, wrong_reconstruction = self.parse_output_sentence(example, output_sentence, tokenizer)
         output_entities = []
         output_events = []
         output_lines = []

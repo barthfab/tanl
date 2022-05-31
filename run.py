@@ -171,6 +171,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
     )
+    tokenizer.add_special_tokens({"additional_special_tokens": ['[', ']', '|', '=']}
+    )
 
     # get list of dataset names
     dataset_names = data_args.datasets.split(',')
