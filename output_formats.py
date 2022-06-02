@@ -72,30 +72,31 @@ class BaseOutputFormat(ABC):
 
         # add spaces around special tokens, so that they are alone when we split
         padded_output_sentence = output_sentence
-        for special_token in [
-            self.BEGIN_ENTITY_TOKEN, self.END_ENTITY_TOKEN,
-            self.SEPARATOR_TOKEN, self.RELATION_SEPARATOR_TOKEN,
-        ]:
-            padded_output_sentence = padded_output_sentence.replace(special_token, ' ' + special_token + ' ')
+        if not tokenizer:
+            for special_token in [
+                self.BEGIN_ENTITY_TOKEN, self.END_ENTITY_TOKEN,
+                self.SEPARATOR_TOKEN, self.RELATION_SEPARATOR_TOKEN,
+            ]:
+                padded_output_sentence = padded_output_sentence.replace(special_token, ' ' + special_token + ' ')
 
         entity_stack = []  # stack of the entities we are extracting from the output sentence
         # this is a list of lists [start, state, entity_name_tokens, entity_other_tokens]
         # where state is "name" (before the first | separator) or "other" (after the first | separator)
         if tokenizer:
-            encodings = tokenizer(padded_output_sentence, return_offsets_mapping=True)
-            tokens = tokenizer.convert_ids_to_tokens(encodings['input_ids'])
+            encodings = tokenizer(padded_output_sentence)
+            tokens = tokenizer.convert_ids_to_tokens(encodings['input_ids'][1:-1])
         else:
             tokens = padded_output_sentence.split()
         for token in tokens:
             if len(token) == 0:
                 continue
 
-            elif token == self.BEGIN_ENTITY_TOKEN:
+            elif self.BEGIN_ENTITY_TOKEN in token:
                 # begin entity
                 start = len(output_tokens)
                 entity_stack.append([start, "name", [], []])
 
-            elif token == self.END_ENTITY_TOKEN and len(entity_stack) > 0:
+            elif self.END_ENTITY_TOKEN in token and len(entity_stack) > 0:
                 # end entity
                 start, state, entity_name_tokens, entity_other_tokens = entity_stack.pop()
                 if tokenizer:
@@ -115,7 +116,7 @@ class BaseOutputFormat(ABC):
                 if state == "other" and len(splits) > 0:
                     for x in splits:
                         if tokenizer:
-                            tags.append(tuple(tokenizer.convert_tokens_to_string.split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
+                            tags.append(tuple(tokenizer.convert_tokens_to_string(x).split(self.RELATION_SEPARATOR_TOKEN)))
                         else:
                             tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
 
@@ -125,7 +126,7 @@ class BaseOutputFormat(ABC):
                 # a normal token
                 if len(entity_stack) > 0:
                     # inside some entities
-                    if token == self.SEPARATOR_TOKEN:
+                    if self.SEPARATOR_TOKEN in token:
                         x = entity_stack[-1]
 
                         if x[1] == "name":
@@ -230,7 +231,7 @@ class BaseOutputFormat(ABC):
                 entity_tuple = (entity_name, entity_tags, new_start, new_end + 1)
                 predicted_entities.append(entity_tuple)
 
-        return predicted_entities, wrong_reconstruction
+        return unmatched_predicted_entities, wrong_reconstruction
 
 
 @register_output_format
@@ -740,6 +741,7 @@ class BigBioOutputFormat(BaseOutputFormat):
         output_events = []
         output_lines = []
         format_error = False
+        offset_error = False
         argument_error = False
 
         for guid, predicted_entity in enumerate(predicted_entities):
@@ -750,13 +752,16 @@ class BigBioOutputFormat(BaseOutputFormat):
                 continue
             # is the entity an argument or an event
             if tags[0][0].strip() in entity_types:
-                output_lines.append(f'T{entity_offset + guid + 1}\t{tags[0][0]} {offset_mapping[start][0]} {offset_mapping[end][1]}\t{entity_name}\n')
-                output_entities.append(Entity(
-                    type=tags[0][0],
-                    start=start,
-                    end=end,
-                    id=f'T{entity_offset + guid + 1}'
-                ))
+                if start < len(offset_mapping) and end < len(offset_mapping):
+                    output_lines.append(f'T{entity_offset + guid + 1}\t{tags[0][0]} {offset_mapping[start][0]} {offset_mapping[end][1]}\t{entity_name}\n')
+                    output_entities.append(Entity(
+                        type=tags[0][0],
+                        start=start,
+                        end=end,
+                        id=f'T{entity_offset + guid + 1}'
+                    ))
+                else:
+                    offset_error = True
             elif tags[0][0].strip() in event_types:
                 output_events.append(Event(
                     id=f'E{entity_offset + guid + 1}',
@@ -772,23 +777,26 @@ class BigBioOutputFormat(BaseOutputFormat):
             arguments = []
             string_args = ""
             for tag in event.arguments:
-                tag_name, tag_type = tag
-                argument = [e for e in output_lines if e.split('\t')[-1] == tag_name]
-                if not argument:
-                    argument_error = True
-                    continue
-                if len(argument) >= 2:
-                    closest_start = min(argument, key=lambda x: abs(int(x.split('\t')[1].split(' ')[1]) - event.start))
-                    arguments.append(Argument(role=tag_type,
-                                              ref_id=closest_start.split('\t')[0]
-                                             ))
-                    string_args += " " + tag_type + ":" + closest_start.split('\t')[0]
+                if len(tag) == 2:
+                    tag_name, tag_type = tag
+                    argument = [e for e in output_lines if e.split('\t')[-1] == tag_name]
+                    if not argument:
+                        argument_error = True
+                        continue
+                    if len(argument) >= 2:
+                        closest_start = min(argument, key=lambda x: abs(int(x.split('\t')[1].split(' ')[1]) - event.start))
+                        arguments.append(Argument(role=tag_type,
+                                                  ref_id=closest_start.split('\t')[0]
+                                                 ))
+                        string_args += " " + tag_type + ":" + closest_start.split('\t')[0]
+                    else:
+                        arguments.append(Argument(role=tag_type,
+                                                  ref_id=argument[0].split('\t')[0]
+                                                  ))
+                        string_args += " " + tag_type + ":" + argument[0].split('\t')[0]
                 else:
-                    arguments.append(Argument(role=tag_type,
-                                              ref_id=argument[0].split('\t')[0]
-                                              ))
-                    string_args += " " + tag_type + ":" + argument[0].split('\t')[0]
+                    argument_error = True
             event.arguments = arguments
             output_lines.append(f'E{event_offset + guid + 1}\t{event.type}:T{event.id[1:]}{string_args}\n')
 
-        return output_entities, output_events, output_lines, format_error, argument_error
+        return output_entities, output_events, output_lines, format_error, argument_error, offset_error

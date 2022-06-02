@@ -2554,7 +2554,7 @@ class BigBioDatasets(BaseDataset):
                     if guid == 0 and header_offset > 0:
                         s_t += header_offset
                     s_t += len(sentence) + 1
-        return examples[0:4]
+        return examples[0:1]
 
     def adapt_span(self, start, end, token_starts):
         """
@@ -2569,8 +2569,7 @@ class BigBioDatasets(BaseDataset):
         return new_start, new_end
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
-                         macro: bool = False, tokenizer=None) \
-            -> Dict[str, float]:
+                         macro: bool = False, tokenizer=None):
         """
         Evaluate model on this dataset.
         """
@@ -2579,20 +2578,29 @@ class BigBioDatasets(BaseDataset):
         given_ids = {}
         now = datetime.now()
         current_time = now.strftime("%Y_%m_%d_%H")
-        self.eval_run += 1
-        if not os.path.exists(f'./output_files/{current_time}/Epoch_{self.eval_run}'):
-            os.makedirs(f'./output_files/{current_time}/Epoch_{self.eval_run}')
+        global_format_error = 0
+        global_argument_error = 0
+        global_offset_error = 0
+        if not os.path.exists(f'./output_files/{current_time}'):
+            os.makedirs(f'./output_files/{current_time}')
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             id = example.id.split('_')[0]
             if id not in given_ids:
                 given_ids[id] = {'entities': 0,
                                  'events': 0}
-            a2, txt, entities, events = self.evaluate_example(example=example,
-                                                              output_sentence=output_sentence,
-                                                              tokenizer=tokenizer,
-                                                              entity_offset=given_ids[id]['entities'],
-                                                              event_offset=given_ids[id]['events'],)
-
+            a2, entities, events, format_error, argument_error, offset_error =\
+                self.evaluate_example(example=example,
+                                      output_sentence=output_sentence,
+                                      tokenizer=tokenizer,
+                                      entity_offset=given_ids[id]['entities'],
+                                      event_offset=given_ids[id]['events'],
+                                      )
+            if format_error:
+                global_format_error += 1
+            if argument_error:
+                global_argument_error += 1
+            if offset_error:
+                global_offset_error += 1
             if id in output_a2:
                 output_a2[id].extend(a2)
                 given_ids[id]['entities'] += len(entities)
@@ -2600,18 +2608,25 @@ class BigBioDatasets(BaseDataset):
             else:
                 output_a2[id] = a2
         for name, lines in output_a2.items():
-            with open(f'./output_files/{current_time}/Epoch_{self.eval_run}/{name}.a2', 'a') as f:
+            with open(f'./output_files/{current_time}/{name}.a2', 'a') as f:
                 f.writelines(lines)
-        return {'dir': f'./output_files/{current_time}/Epoch_{self.eval_run}'}
+        with open(f'./output_files/{current_time}/bugreport.txt', 'a') as f:
+            f.write(f'format_error: {global_format_error}\n')
+            f.write(f'offset_error: {global_offset_error}\n')
+            f.write(f'argument_error: {global_argument_error}\n')
+        return {'dir': f'./output_files/{current_time}',
+                'format_error': global_format_error,
+                'offset_error': global_offset_error,
+                'argument_error': global_argument_error}
 
     def evaluate_example(self, example: InputExample, output_sentence: str, model=None,
-                         tokenizer=None, event_offset=None, entity_offset=None) -> Counter:
+                         tokenizer=None, event_offset=None, entity_offset=None):
         """
         Evaluate an output sentence on a single example of this dataset.
         """
         # extract entities and relations from output sentence
         encodings = self.tokenizer(output_sentence, return_offsets_mapping=True)
-        predicted_entities, predicted_events, output_lines, format_error, argument_error = \
+        predicted_entities, predicted_events, output_lines, format_error, argument_error, offset_error = \
             self.output_format.run_inference(
                 example=example,
                 output_sentence=output_sentence,
@@ -2622,9 +2637,9 @@ class BigBioDatasets(BaseDataset):
                 event_offset=event_offset,
                 tokenizer=tokenizer,
             )
-        return output_lines, output_sentence, predicted_entities, predicted_events
+        return output_lines, predicted_entities, predicted_events, format_error, argument_error, offset_error
 
-    def offset_mapping (self, sentence):
+    def offset_mapping(self, sentence):
         sentence = sentence.split()
         offsets = []
         curr_len = 0
