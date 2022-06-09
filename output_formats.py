@@ -264,8 +264,8 @@ class BaseOutputFormat(ABC):
         entity_stack = []  # stack of the entities we are extracting from the output sentence
         # this is a list of lists [start, state, entity_name_tokens, entity_other_tokens]
         # where state is "name" (before the first | separator) or "other" (after the first | separator)
-
-        tokens = list(output_sentence)
+        s = '[E2F1|Gene_or_gene_product] uses the[ ATM|Gene_or_gene_product][ signaling pathway|Pathway| ATM=Participant] to[[[ induce|Positive_regulation| signaling pathway=Cause| phosphorylation=Theme]|Positive_regulation| signaling pathway=Cause| apoptosis=Theme]|Positive_regulation| signaling pathway=Cause| phosphorylation=Theme][ p53|Gene_or_gene_product] and[ Chk2|Gene_or_gene_product][[ phosphorylation|Phosphorylation| Chk2=Theme]|Phosphorylation| p53=Theme] and[ apoptosis|Pathway| p53=Participant| Chk2=Participant2].'
+        tokens = list(s) #output_sentence
 
         for token in tokens:
             if len(token) == 0:
@@ -914,7 +914,7 @@ class BigBioOutputFormat(BaseOutputFormat):
         argument_error = False
         type_error = False
         offset = 0
-        for guid, predicted_event in enumerate(predicted_events):
+        for predicted_event in predicted_events:
             event_name, tags, start, end = predicted_event
             if len(tags) == 0 or len(tags[0]) > 1:
                 # we do not have a tag for the entity type
@@ -922,16 +922,16 @@ class BigBioOutputFormat(BaseOutputFormat):
                 continue
             if tags[0][0].strip() in event_types:
                 #create an event for every found event in output string
+                offset += 1
                 output_events.append(Event(
-                    id=f'E{entity_offset + guid}',
+                    id=f'E{entity_offset + offset}',
                     type=tags[0][0],
                     text=event_name,
                     start=start,
                     end=end,
                     arguments=tags[1:],
                 ))
-                offset += 1
-                output_lines.append(f'T{entity_offset + guid}\t{tags[0][0]} {start} {end}\t{event_name}\n')
+                output_lines.append(f'T{entity_offset + offset}\t{tags[0][0]} {start} {end}\t{event_name}\n')
             else:
                 type_error = True
                 continue

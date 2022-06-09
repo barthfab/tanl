@@ -2554,7 +2554,7 @@ class BigBioDatasets(BaseDataset):
                     if guid == 0 and header_offset > 0:
                         s_t += header_offset
                     s_t += len(sentence) + 1
-        return examples[0:1]
+        return examples
 
     def adapt_span(self, start, end, token_starts):
         """
@@ -2591,7 +2591,8 @@ class BigBioDatasets(BaseDataset):
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             id = example.id.split('_')[0]
             if id not in entity_offset:
-                entity_offset[id] = len(example.entities)
+                #todo find exact offset for the a2 files
+                entity_offset[id] = 200
             #parse all events in the given sentence
             output_events, output_lines, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
                 self.output_format.get_all_events(example, output_sentence, tokenizer, self.event_types, entity_offset[id])
@@ -2611,10 +2612,15 @@ class BigBioDatasets(BaseDataset):
             else:
                 output_a2[id] = output_lines
         #write eval results in a2 file
+        epochs = os.listdir(f'./output_files/{current_time}')
+        if epochs:
+            num_epoch = max(epochs, key=lambda x: int(x.split('Epoch ')[-1]))
+        else:
+            num_epoch = 1
         for name, lines in output_a2.items():
-            with open(f'./output_files/{current_time}/{name}.a2', 'a') as f:
+            with open(f'./output_files/{current_time}/Epoch {num_epoch}/{name}.a2', 'a') as f:
                 f.writelines(lines)
-        with open(f'./output_files/{current_time}/bugreport.txt', 'a') as f:
+        with open(f'./output_files/{current_time}/Epoch {num_epoch}/bugreport.txt', 'a') as f:
             f.write(f'format_error: {global_format_error}\n')
             f.write(f'tag_len_error: {global_tag_len_error}\n')
             f.write(f'argument_error: {global_argument_error}\n')
