@@ -2583,10 +2583,6 @@ class BigBioDatasets(BaseDataset):
         global_type_error = 0
         global_reconstruction_error = 0
 
-        #make eval folder
-        if not os.path.exists(f'./output_files/{current_time}'):
-            os.makedirs(f'./output_files/{current_time}')
-
         #eval every result
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             id = example.id.split('_')[0]
@@ -2611,12 +2607,20 @@ class BigBioDatasets(BaseDataset):
                 output_a2[id].extend(output_lines)
             else:
                 output_a2[id] = output_lines
+
         #write eval results in a2 file
+        if not os.path.exists(f'./output_files/{current_time}'):
+            os.makedirs(f'./output_files/{current_time}')
         epochs = os.listdir(f'./output_files/{current_time}')
         if epochs:
             num_epoch = max(epochs, key=lambda x: int(x.split('Epoch ')[-1]))
         else:
             num_epoch = 1
+
+        #make eval folder
+        if not os.path.exists(f'./output_files/{current_time}/Epoch {num_epoch}/'):
+            os.makedirs(f'./output_files/{current_time}/Epoch {num_epoch}/')
+
         for name, lines in output_a2.items():
             with open(f'./output_files/{current_time}/Epoch {num_epoch}/{name}.a2', 'a') as f:
                 f.writelines(lines)
