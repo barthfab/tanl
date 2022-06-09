@@ -2574,75 +2574,55 @@ class BigBioDatasets(BaseDataset):
         Evaluate model on this dataset.
         """
         output_a2 = {}
-        output_txt = {}
-        given_ids = {}
+        entity_offset = {}
         now = datetime.now()
         current_time = now.strftime("%Y_%m_%d_%H")
         global_format_error = 0
         global_argument_error = 0
-        global_offset_error = 0
+        global_tag_len_error = 0
+        global_type_error = 0
+        global_reconstruction_error = 0
+
+        #make eval folder
         if not os.path.exists(f'./output_files/{current_time}'):
             os.makedirs(f'./output_files/{current_time}')
+
+        #eval every result
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             id = example.id.split('_')[0]
-            if id not in given_ids:
-                given_ids[id] = {'entities': 0,
-                                 'events': 0}
-            a2, entities, events, format_error, argument_error, offset_error =\
-                self.evaluate_example(example=example,
-                                      output_sentence=output_sentence,
-                                      tokenizer=tokenizer,
-                                      entity_offset=given_ids[id]['entities'],
-                                      event_offset=given_ids[id]['events'],
-                                      )
+            if id not in entity_offset:
+                entity_offset[id] = len(example.entities)
+            #parse all events in the given sentence
+            output_events, output_lines, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
+                self.output_format.get_all_events(example, output_sentence, tokenizer, self.event_types, entity_offset[id])
+            entity_offset[id] += offset
             if format_error:
                 global_format_error += 1
             if argument_error:
                 global_argument_error += 1
-            if offset_error:
-                global_offset_error += 1
+            if tag_len_error:
+                global_tag_len_error += 1
+            if type_error:
+                global_type_error += 1
+            if wrong_reconstruction:
+                global_reconstruction_error += 1
             if id in output_a2:
-                output_a2[id].extend(a2)
-                given_ids[id]['entities'] += len(entities)
-                given_ids[id]['events'] += len(events)
+                output_a2[id].extend(output_lines)
             else:
-                output_a2[id] = a2
+                output_a2[id] = output_lines
+        #write eval results in a2 file
         for name, lines in output_a2.items():
             with open(f'./output_files/{current_time}/{name}.a2', 'a') as f:
                 f.writelines(lines)
         with open(f'./output_files/{current_time}/bugreport.txt', 'a') as f:
             f.write(f'format_error: {global_format_error}\n')
-            f.write(f'offset_error: {global_offset_error}\n')
+            f.write(f'tag_len_error: {global_tag_len_error}\n')
             f.write(f'argument_error: {global_argument_error}\n')
+            f.write(f'type_error: {global_type_error}\n')
+            f.write(f'reconstruction_error: {global_reconstruction_error}\n')
+
+        #unnecessary return
         return {'dir': f'./output_files/{current_time}',
                 'format_error': global_format_error,
-                'offset_error': global_offset_error,
+                'tag_len_error': global_tag_len_error,
                 'argument_error': global_argument_error}
-
-    def evaluate_example(self, example: InputExample, output_sentence: str, model=None,
-                         tokenizer=None, event_offset=None, entity_offset=None):
-        """
-        Evaluate an output sentence on a single example of this dataset.
-        """
-        # extract entities and relations from output sentence
-        encodings = self.tokenizer(output_sentence, return_offsets_mapping=True)
-        predicted_entities, predicted_events, output_lines, format_error, argument_error, offset_error = \
-            self.output_format.run_inference(
-                example=example,
-                output_sentence=output_sentence,
-                offset_mapping=encodings['offset_mapping'],
-                entity_types=self.entity_types,
-                event_types=self.event_types,
-                entity_offset=entity_offset,
-                event_offset=event_offset,
-                tokenizer=tokenizer,
-            )
-        return output_lines, predicted_entities, predicted_events, format_error, argument_error, offset_error
-
-    def offset_mapping(self, sentence):
-        sentence = sentence.split()
-        offsets = []
-        curr_len = 0
-        for token in sentence:
-            offsets.append((curr_len, curr_len + len(token)))
-            curr_len += len(token) + 1
