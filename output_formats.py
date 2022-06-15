@@ -233,7 +233,7 @@ class BaseOutputFormat(ABC):
 
         return unmatched_predicted_entities, wrong_reconstruction
 
-    def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str) -> Tuple[list, bool]:
+    def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str) -> Tuple[list, bool, str]:
         """
         Parse an output sentence in augmented language and extract inferred entities and tags.
         Return a pair (predicted_entities, wrong_reconstruction), where:
@@ -264,8 +264,7 @@ class BaseOutputFormat(ABC):
         entity_stack = []  # stack of the entities we are extracting from the output sentence
         # this is a list of lists [start, state, entity_name_tokens, entity_other_tokens]
         # where state is "name" (before the first | separator) or "other" (after the first | separator)
-        s = '[E2F1|Gene_or_gene_product] uses the[ ATM|Gene_or_gene_product][ signaling pathway|Pathway| ATM=Participant] to[[[ induce|Positive_regulation| signaling pathway=Cause| phosphorylation=Theme]|Positive_regulation| signaling pathway=Cause| apoptosis=Theme]|Positive_regulation| signaling pathway=Cause| phosphorylation=Theme][ p53|Gene_or_gene_product] and[ Chk2|Gene_or_gene_product][[ phosphorylation|Phosphorylation| Chk2=Theme]|Phosphorylation| p53=Theme] and[ apoptosis|Pathway| p53=Participant| Chk2=Participant2].'
-        tokens = list(s) #output_sentence
+        tokens = list(output_sentence)
 
         for token in tokens:
             if len(token) == 0:
@@ -334,7 +333,7 @@ class BaseOutputFormat(ABC):
 
         # check if we reconstructed the original sentence correctly, after removing all spaces
         wrong_reconstruction = (''.join(output_tokens) != ' '.join(example_tokens))
-
+        reconstructed_sentence = ''.join(output_tokens)
         # now we align self.tokens with output_tokens (with dynamic programming)
         cost = np.zeros((len(example_tokens) + 1, len(output_tokens) + 1))  # cost of alignment between tokens[:i]
         # and output_tokens[:j]
@@ -405,7 +404,7 @@ class BaseOutputFormat(ABC):
                 entity_tuple = (entity_name, entity_tags, new_start, new_end + 1)
                 predicted_entities.append(entity_tuple)
 
-        return predicted_entities, wrong_reconstruction
+        return predicted_entities, wrong_reconstruction, reconstructed_sentence
 
 
 @register_output_format
@@ -906,7 +905,7 @@ class BigBioOutputFormat(BaseOutputFormat):
     def get_all_events(self, example: InputExample, output_sentence: str, tokenizer=None, event_types: list[str] = None,
                        entity_offset: int=None):
         example_tokens_char = list(tokenizer.convert_tokens_to_string(example.tokens))
-        predicted_events, wrong_reconstruction = self.parse_output_sentence_char(example_tokens_char, output_sentence,)
+        predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example_tokens_char, output_sentence,)
         output_events = []
         output_lines = []
         format_error = False
@@ -943,7 +942,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                 if len(tag) == 2:
                     tag_name, tag_type = tag
                     #check if the argument is an event
-                    argument = [e for e in output_events if e.text == tag_name]
+                    argument = [e for e in output_events if e.text.strip() == tag_name.strip()]
                     if argument:
                         if len(argument) == 1:
                             arg_event = argument[0]
@@ -959,24 +958,23 @@ class BigBioOutputFormat(BaseOutputFormat):
                                                       ))
                     else:
                         #check if the argument is an entity
-                        argument = [e for e in example.entities if e.type == tag_type]
+                        #todo see if this works
+                        argument = [e for e in example.entities if tokenizer.convert_tokens_to_string(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
                         if argument:
                             #find the closest entity to the corresponding event
                             argument.sort(key=lambda x: (x.start - event.start))
-                            for entity in argument:
-                                if tag_name == tokenizer.convert_tokens_to_string(example.tokens)[entity.start:entity.end].strip():
-                                    string_args += " " + tag_type + ':' + entity.id.split('_')[-1]
-                                    arguments.append(Argument(role=tag_type,
-                                                              ref_id=entity.id.split('_')[-1]
-                                                              ))
-                                    continue
+
+                            string_args += " " + tag_type + ':' + argument[0].id.split('_')[-1]
+                            arguments.append(Argument(role=tag_type,
+                                                      ref_id=argument[0].id.split('_')[-1]
+                                                      ))
                         else:
                             argument_error = True
                 else:
                     tag_len_error = True
             event.arguments = arguments
             output_lines.append(f'{event.id}\t{event.type}:T{event.id[1:]}{string_args}\n')
-        return output_events, output_lines, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction
+        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction
 
     def run_inference(self, example: InputExample, output_sentence: str, tokenizer=None, entity_types: list[str]=None,
                       event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):

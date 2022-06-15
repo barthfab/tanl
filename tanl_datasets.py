@@ -2554,7 +2554,7 @@ class BigBioDatasets(BaseDataset):
                     if guid == 0 and header_offset > 0:
                         s_t += header_offset
                     s_t += len(sentence) + 1
-        return examples
+        return examples[0:1]
 
     def adapt_span(self, start, end, token_starts):
         """
@@ -2574,65 +2574,105 @@ class BigBioDatasets(BaseDataset):
         Evaluate model on this dataset.
         """
         output_a2 = {}
-        entity_offset = {}
+        output_files = {'Epoch 1': {}}
+        error_files = {'Epoch 1': {'global_format_error': 0,
+                                   'global_argument_error': 0,
+                                   'global_tag_len_error': 0,
+                                   'global_type_error': 0,
+                                   'global_reconstruction_error': 0,
+                                   }
+                       }
+        entity_offset = [{}]
         now = datetime.now()
         current_time = now.strftime("%Y_%m_%d_%H")
-        global_format_error = 0
-        global_argument_error = 0
-        global_tag_len_error = 0
-        global_type_error = 0
-        global_reconstruction_error = 0
+
 
         #eval every result
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             id = example.id.split('_')[0]
-            if id not in entity_offset:
-                #todo find exact offset for the a2 files
-                entity_offset[id] = 200
-            #parse all events in the given sentence
-            output_events, output_lines, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
-                self.output_format.get_all_events(example, output_sentence, tokenizer, self.event_types, entity_offset[id])
-            entity_offset[id] += offset
-            if format_error:
-                global_format_error += 1
-            if argument_error:
-                global_argument_error += 1
-            if tag_len_error:
-                global_tag_len_error += 1
-            if type_error:
-                global_type_error += 1
-            if wrong_reconstruction:
-                global_reconstruction_error += 1
-            if id in output_a2:
-                output_a2[id].extend(output_lines)
+            ex_id = int(example.id.split('_')[-1])
+            ep_num = len(output_files)
+            if len(entity_offset) < ep_num:
+                entity_offset.append({id: 200})
             else:
-                output_a2[id] = output_lines
+                if id not in entity_offset[ep_num - 1].keys():
+                    entity_offset[ep_num - 1].update({id: 200})
+            #parse all events in the given sentence
+            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
+                self.output_format.get_all_events(example, output_sentence, tokenizer, self.event_types, entity_offset[ep_num - 1][id])
+            entity_offset[ep_num - 1][id] += offset
+            if id in output_files[f'Epoch {ep_num}'].keys():
+                if ex_id in output_files[f'Epoch {ep_num}'][id]['text'].keys():
+                    output_files[f'Epoch {ep_num + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
+                                                                'events': {ex_id: output_lines}}}
+                    error_files[f'Epoch {ep_num + 1}'] = self.update_error(error_files['Error'], format_error,
+                                                                           argument_error, tag_len_error,
+                                                                           type_error, wrong_reconstruction)
+                else:
+                    output_files[f'Epoch {ep_num}'][id]['text'][ex_id] = reconstructed_sentence
+                    output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = reconstructed_sentence
+                    error_files[f'Epoch {ep_num}'].update(
+                        self.update_error(error_files[f'Epoch {ep_num}'], format_error, argument_error, tag_len_error,
+                                          type_error, wrong_reconstruction))
 
-        #write eval results in a2 file
+            else:
+                output_files[f'Epoch {ep_num}'][id] = {'text': {ex_id: reconstructed_sentence},
+                                                       'events': {ex_id: output_lines}}
+                error_files[f'Epoch {ep_num}'].update(self.update_error(error_files[f'Epoch {ep_num}'], format_error,
+                                                                        argument_error, tag_len_error,
+                                                                        type_error, wrong_reconstruction))
+
         if not os.path.exists(f'./output_files/{current_time}'):
             os.makedirs(f'./output_files/{current_time}')
         epochs = os.listdir(f'./output_files/{current_time}')
-        if epochs:
-            num_epoch = max(epochs, key=lambda x: int(x.split('Epoch ')[-1]))
-        else:
-            num_epoch = 1
-
-        #make eval folder
-        if not os.path.exists(f'./output_files/{current_time}/Epoch {num_epoch}/'):
-            os.makedirs(f'./output_files/{current_time}/Epoch {num_epoch}/')
-
-        for name, lines in output_a2.items():
-            with open(f'./output_files/{current_time}/Epoch {num_epoch}/{name}.a2', 'a') as f:
-                f.writelines(lines)
-        with open(f'./output_files/{current_time}/Epoch {num_epoch}/bugreport.txt', 'a') as f:
-            f.write(f'format_error: {global_format_error}\n')
-            f.write(f'tag_len_error: {global_tag_len_error}\n')
-            f.write(f'argument_error: {global_argument_error}\n')
-            f.write(f'type_error: {global_type_error}\n')
-            f.write(f'reconstruction_error: {global_reconstruction_error}\n')
+        #write eval results in a2 file
+        for name, epoch in output_files.items():
+            ep_id = int(name.split(' ')[-1])
+            if epochs:
+                ep_id = ep_id + len(epochs)
+                os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
+            else:
+                os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
+            with open(f'./output_files/{current_time}/Epoch {ep_id}/bugreport.txt', 'a') as f:
+                f.write(f'format_error: {error_files[name]["global_format_error"]}\n')
+                f.write(f'tag_len_error: {error_files[name]["global_tag_len_error"]}\n')
+                f.write(f'argument_error: {error_files[name]["global_argument_error"]}\n')
+                f.write(f'type_error: {error_files[name]["global_type_error"]}\n')
+                f.write(f'reconstruction_error: {error_files[name]["global_reconstruction_error"]}\n')
+            for pmid, file in epoch.items():
+                txt_lines = sorted(file['text'].items())
+                txt_lines = [x[1] for x in txt_lines if len(x) >= 1]
+                with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}.txt', 'a') as f:
+                    f.writelines(txt_lines)
+                a2_lines = sorted(file['events'].items())
+                a2_lines = [x[1] for x in a2_lines if len(x) >= 1]
+                txt_len = 0
+                for guid, a2_line in enumerate(a2_lines):
+                    for gaid, line in enumerate(a2_line):
+                        if line.startswith('T'):
+                            field = line.split('\t')
+                            trigger_name = field[1].split(' ')[0]
+                            start = field[1].split(' ')[1]
+                            end = field[1].split(' ')[2]
+                            new_field = trigger_name + " " + str(int(start) + txt_len) + " " + str(int(end) + txt_len)
+                            a2_line[gaid] = field[0] + '\t' + new_field + '\t' + field[2]
+                    txt_len += len(txt_lines[guid])
+                with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}.a2', 'a') as f:
+                    for a2_line in a2_lines:
+                        f.writelines(a2_line)
 
         #unnecessary return
-        return {'dir': f'./output_files/{current_time}',
-                'format_error': global_format_error,
-                'tag_len_error': global_tag_len_error,
-                'argument_error': global_argument_error}
+        return {'dir': f'./output_files/{current_time}'}
+
+    def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction):
+        if format_error:
+            epoch['global_format_error'] += 1
+        if argument_error:
+            epoch['global_argument_error'] += 1
+        if tag_len_error:
+            epoch['global_tag_len_error'] += 1
+        if type_error:
+            epoch['global_type_error'] += 1
+        if wrong_reconstruction:
+            epoch['global_reconstruction_error'] += 1
+        return epoch
