@@ -2505,8 +2505,6 @@ class BigBioDatasets(BaseDataset):
                 if headline.endswith(' '):
                     header_offset = 1
                 sentences = segmenter.split_single(passage['text'][0])
-                encodings = self.tokenizer(sentences, return_offsets_mapping=True)
-
                 for guid, sentence in enumerate(sentences):
                     entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
                                 and ta['offsets'][0][1] <= s_t + len(sentence)]
@@ -2514,23 +2512,15 @@ class BigBioDatasets(BaseDataset):
                               and ta['trigger']['offsets'][0][1] <= s_t + len(sentence)]
                     example_entities = []
                     example_events = []
-                    tokens = self.tokenizer.convert_ids_to_tokens(encodings['input_ids'][guid])[1:-1]
-                    token_starts = list(list(zip(*encodings["offset_mapping"][guid]))[0])[1:-2]
                     for entity in entities:
-                        start, end = self.adapt_span(entity['offsets'][0][0] - s_t,
-                                                     entity['offsets'][0][1] - s_t,
-                                                     token_starts)
-                        example_entities.append(Entity(start=start,
-                                                       end=end,
+                        example_entities.append(Entity(start=entity['offsets'][0][0] - s_t,
+                                                       end=entity['offsets'][0][1] - s_t,
                                                        type=entity['type'],
                                                        id=entity['id']))
                         if entity['type'] not in self.entity_types:
                             self.entity_types.append(entity['type'])
                     for event in events:
                         example_arguments = []
-                        start, end = self.adapt_span(event['trigger']['offsets'][0][0] - s_t,
-                                                     event['trigger']['offsets'][0][1] - s_t,
-                                                     token_starts)
                         if event['type'] not in self.event_types:
                             self.event_types.append(event['type'])
                         for argument in event['arguments']:
@@ -2542,39 +2532,26 @@ class BigBioDatasets(BaseDataset):
                             id=event['id'],
                             type=event['type'],
                             text=event['trigger']['text'],
-                            start=start,
-                            end=end,
+                            start=event['trigger']['offsets'][0][0] - s_t,
+                            end=event['trigger']['offsets'][0][1] - s_t,
                             arguments=example_arguments
                         ))
                     examples.append(InputExample(
                         id=passage['id'] + f"_{guid}",
-                        tokens=tokens,
+                        tokens=list(sentence),
                         entities=example_entities,
                         events=example_events
                     ))
                     if guid == 0 and header_offset > 0:
                         s_t += header_offset
                     s_t += len(sentence) + 1
-        return examples[0:1]
-
-    def adapt_span(self, start, end, token_starts):
-        """
-        Adapt annotations to token spans
-        """
-        start = int(start)
-        end = int(end)
-
-        new_start = bisect.bisect_right(token_starts, start) - 1
-        new_end = bisect.bisect_left(token_starts, end)
-
-        return new_start, new_end
+        return examples
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
                          macro: bool = False, tokenizer=None):
         """
         Evaluate model on this dataset.
         """
-        output_a2 = {}
         output_files = {'Epoch 1': {}}
         error_files = {'Epoch 1': {'global_format_error': 0,
                                    'global_argument_error': 0,
@@ -2600,7 +2577,7 @@ class BigBioDatasets(BaseDataset):
                     entity_offset[ep_num - 1].update({id: 200})
             #parse all events in the given sentence
             output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, mod_output_sentence = \
-                self.output_format.get_all_events(example, output_sentence, tokenizer, self.event_types, entity_offset[ep_num - 1][id])
+                self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_num - 1][id])
             entity_offset[ep_num - 1][id] += offset
             if id in output_files[f'Epoch {ep_num}'].keys():
                 if ex_id in output_files[f'Epoch {ep_num}'][id]['text'].keys():

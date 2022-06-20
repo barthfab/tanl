@@ -28,7 +28,7 @@ class BaseOutputFormat(ABC):
     RELATION_SEPARATOR_TOKEN = '='
 
     @abstractmethod
-    def format_output(self, example: InputExample, tokenizer=None) -> str:
+    def format_output(self, example: InputExample) -> str:
         """
         Format output in augmented natural language.
         """
@@ -41,7 +41,7 @@ class BaseOutputFormat(ABC):
         """
         raise NotImplementedError
 
-    def parse_output_sentence(self, example: InputExample, output_sentence: str, tokenizer=None) -> Tuple[list, bool]:
+    def parse_output_sentence(self, example: InputExample, output_sentence: str) -> Tuple[list, bool]:
         """
         Parse an output sentence in augmented language and extract inferred entities and tags.
         Return a pair (predicted_entities, wrong_reconstruction), where:
@@ -72,21 +72,17 @@ class BaseOutputFormat(ABC):
 
         # add spaces around special tokens, so that they are alone when we split
         padded_output_sentence = output_sentence
-        if not tokenizer:
-            for special_token in [
-                self.BEGIN_ENTITY_TOKEN, self.END_ENTITY_TOKEN,
-                self.SEPARATOR_TOKEN, self.RELATION_SEPARATOR_TOKEN,
-            ]:
+        for special_token in [
+            self.BEGIN_ENTITY_TOKEN, self.END_ENTITY_TOKEN,
+            self.SEPARATOR_TOKEN, self.RELATION_SEPARATOR_TOKEN,
+        ]:
                 padded_output_sentence = padded_output_sentence.replace(special_token, ' ' + special_token + ' ')
 
         entity_stack = []  # stack of the entities we are extracting from the output sentence
         # this is a list of lists [start, state, entity_name_tokens, entity_other_tokens]
         # where state is "name" (before the first | separator) or "other" (after the first | separator)
-        if tokenizer:
-            encodings = tokenizer(padded_output_sentence)
-            tokens = tokenizer.convert_ids_to_tokens(encodings['input_ids'][1:-1])
-        else:
-            tokens = padded_output_sentence.split()
+
+        tokens = padded_output_sentence.split()
         for token in tokens:
             if len(token) == 0:
                 continue
@@ -99,10 +95,7 @@ class BaseOutputFormat(ABC):
             elif self.END_ENTITY_TOKEN in token and len(entity_stack) > 0:
                 # end entity
                 start, state, entity_name_tokens, entity_other_tokens = entity_stack.pop()
-                if tokenizer:
-                    entity_name = tokenizer.convert_tokens_to_string(entity_name_tokens).strip()
-                else:
-                    entity_name = ' '.join(entity_name_tokens).strip()
+                entity_name = ' '.join(entity_name_tokens).strip()
                 end = len(output_tokens)
 
                 tags = []
@@ -115,10 +108,7 @@ class BaseOutputFormat(ABC):
 
                 if state == "other" and len(splits) > 0:
                     for x in splits:
-                        if tokenizer:
-                            tags.append(tuple(tokenizer.convert_tokens_to_string(x).split(self.RELATION_SEPARATOR_TOKEN)))
-                        else:
-                            tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
+                        tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
 
                 unmatched_predicted_entities.append((entity_name, tags, start, end))
 
@@ -871,15 +861,15 @@ class MultiWozOutputFormat(BaseOutputFormat):
 class BigBioOutputFormat(BaseOutputFormat):
     name = 'bigbio'
 
-    def format_output(self, example: InputExample, tokenizer=None) -> str:
+    def format_output(self, example: InputExample) -> str:
         """
         Get output in augmented natural language, for example:
         [belief] hotel price range cheap , hotel type hotel , duration two [belief]
         augmentations = [([(type,), (tail.text,role), (...) ], #, #), (...)]
         """
         augmentations = []
-        #for entity in example.entities:
-        #    augmentations.append(([(entity.type,)], entity.start, entity.end))
+        for entity in example.entities:
+            augmentations.append(([(entity.type,)], entity.start, entity.end))
         for event in example.events:
             arguments = [(''.join(event.type),)]
             for argument in event.arguments:
@@ -898,18 +888,16 @@ class BigBioOutputFormat(BaseOutputFormat):
                                 self.BEGIN_ENTITY_TOKEN,
                                 self.SEPARATOR_TOKEN,
                                 self.RELATION_SEPARATOR_TOKEN,
-                                self.END_ENTITY_TOKEN,
-                                tokenizer)
+                                self.END_ENTITY_TOKEN,)
 
 
-    def get_all_events(self, example: InputExample, output_sentence: str, tokenizer=None, event_types: list[str] = None,
+    def get_all_events(self, example: InputExample, output_sentence: str, event_types: list[str] = None,
                        entity_offset: int=None):
-        example_tokens_char = list(tokenizer.convert_tokens_to_string(example.tokens))
         if example.id.endswith('_0'):
             output_sentence = output_sentence + " \n"
-        else:
+        elif not example.id.endswith('_1'):
             output_sentence = " " + output_sentence
-        predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example_tokens_char, output_sentence,)
+        predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example.tokens, output_sentence,)
         output_events = []
         output_lines = []
         format_error = False
@@ -963,7 +951,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                     else:
                         #check if the argument is an entity
                         #todo see if this works
-                        argument = [e for e in example.entities if tokenizer.convert_tokens_to_string(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
+                        argument = [e for e in example.entities if example.tokens[e.start:e.end].strip() == tag_name.strip()]
                         if argument:
                             #find the closest entity to the corresponding event
                             argument.sort(key=lambda x: (x.start - event.start))
@@ -980,7 +968,7 @@ class BigBioOutputFormat(BaseOutputFormat):
             output_lines.append(f'{event.id}\t{event.type}:T{event.id[1:]}{string_args}\n')
         return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, output_sentence
 
-    def run_inference(self, example: InputExample, output_sentence: str, tokenizer=None, entity_types: list[str]=None,
+    def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
                       event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):
         """
         Process an output sentence to extract the predicted relation.
@@ -988,7 +976,7 @@ class BigBioOutputFormat(BaseOutputFormat):
         Return an empty list of entities and a single relation, so that it is compatible with joint entity-relation
         extraction datasets.
         """
-        predicted_entities, wrong_reconstruction = self.parse_output_sentence(example, output_sentence, tokenizer)
+        predicted_entities, wrong_reconstruction = self.parse_output_sentence(example, output_sentence)
         output_entities = []
         output_events = []
         output_lines = []

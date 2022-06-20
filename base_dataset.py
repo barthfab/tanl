@@ -175,8 +175,8 @@ class BaseDataset(Dataset, ABC):
             )
 
     def compute_features(self, max_input_length: int, max_output_length: int, multitask: bool = False):
-        input_sentences = [self.input_format.format_input(example, multitask=multitask, tokenizer=self.tokenizer) for example in self.examples]
-        output_sentences = [self.output_format.format_output(example, tokenizer=self.tokenizer) for example in self.examples]
+        input_sentences = [self.input_format.format_input(example, multitask=multitask) for example in self.examples]
+        output_sentences = [self.output_format.format_output(example) for example in self.examples]
 
         input_tok = self.tokenizer.batch_encode_plus(
             input_sentences,

@@ -69,7 +69,7 @@ def expand_tokens(tokens: List[str], augmentations: List[Tuple[List[tuple], int,
 
 
 def augment_sentence(tokens: List[str], augmentations: List[Tuple[List[tuple], int, int]], begin_entity_token: str,
-                     sep_token: str, relation_sep_token: str, end_entity_token: str, tokenizer=None) -> str:
+                     sep_token: str, relation_sep_token: str, end_entity_token: str) -> str:
     """
     Augment a sentence by adding tags in the specified positions.
 
@@ -124,12 +124,7 @@ def augment_sentence(tokens: List[str], augmentations: List[Tuple[List[tuple], i
         # create empty list of children for this new node
         entity_tree[j] = []
 
-    if tokenizer:
-        result = tokenizer.convert_tokens_to_string(expand_tokens(
-            tokens, augmentations, entity_tree, root, begin_entity_token, sep_token, relation_sep_token, end_entity_token
-        ))
-        return result
-    return ' '.join(expand_tokens(
+    return ''.join(expand_tokens(
         tokens, augmentations, entity_tree, root, begin_entity_token, sep_token, relation_sep_token, end_entity_token
     ))
 
