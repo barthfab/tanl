@@ -15,6 +15,7 @@ import random
 import networkx as nx
 from typing import Dict, List, Tuple, Set
 import torch
+import wandb
 from segtok import segmenter
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, T5TokenizerFast
 from datetime import datetime
@@ -2598,26 +2599,29 @@ class BigBioDatasets(BaseDataset):
                 if id not in entity_offset[ep_num - 1].keys():
                     entity_offset[ep_num - 1].update({id: 200})
             #parse all events in the given sentence
-            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
+            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, mod_output_sentence = \
                 self.output_format.get_all_events(example, output_sentence, tokenizer, self.event_types, entity_offset[ep_num - 1][id])
             entity_offset[ep_num - 1][id] += offset
             if id in output_files[f'Epoch {ep_num}'].keys():
                 if ex_id in output_files[f'Epoch {ep_num}'][id]['text'].keys():
                     output_files[f'Epoch {ep_num + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
-                                                                'events': {ex_id: output_lines}}}
+                                                                'events': {ex_id: output_lines},
+                                                                'plain_output': {ex_id: mod_output_sentence}}}
                     error_files[f'Epoch {ep_num + 1}'] = self.update_error(error_files['Error'], format_error,
                                                                            argument_error, tag_len_error,
                                                                            type_error, wrong_reconstruction)
                 else:
                     output_files[f'Epoch {ep_num}'][id]['text'][ex_id] = reconstructed_sentence
-                    output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = reconstructed_sentence
+                    output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = output_lines
+                    output_files[f'Epoch {ep_num}'][id]['plain_output'][ex_id] = mod_output_sentence
                     error_files[f'Epoch {ep_num}'].update(
                         self.update_error(error_files[f'Epoch {ep_num}'], format_error, argument_error, tag_len_error,
                                           type_error, wrong_reconstruction))
 
             else:
                 output_files[f'Epoch {ep_num}'][id] = {'text': {ex_id: reconstructed_sentence},
-                                                       'events': {ex_id: output_lines}}
+                                                       'events': {ex_id: output_lines},
+                                                       'plain_output': {ex_id: mod_output_sentence}}
                 error_files[f'Epoch {ep_num}'].update(self.update_error(error_files[f'Epoch {ep_num}'], format_error,
                                                                         argument_error, tag_len_error,
                                                                         type_error, wrong_reconstruction))
@@ -2633,6 +2637,12 @@ class BigBioDatasets(BaseDataset):
                 os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
             else:
                 os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
+            wandb.log({'global_format_error': error_files[name]["global_format_error"],
+                       'global_argument_error': error_files[name]["global_argument_error"],
+                       'global_tag_len_error': error_files[name]["global_tag_len_error"],
+                       'global_type_error': error_files[name]["global_type_error"],
+                       'global_reconstruction_error': error_files[name]["global_reconstruction_error"],
+                       })
             with open(f'./output_files/{current_time}/Epoch {ep_id}/bugreport.txt', 'a') as f:
                 f.write(f'format_error: {error_files[name]["global_format_error"]}\n')
                 f.write(f'tag_len_error: {error_files[name]["global_tag_len_error"]}\n')
@@ -2644,6 +2654,10 @@ class BigBioDatasets(BaseDataset):
                 txt_lines = [x[1] for x in txt_lines if len(x) >= 1]
                 with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}.txt', 'a') as f:
                     f.writelines(txt_lines)
+                txt_output = sorted(file['plain_output'].items())
+                txt_output = [x[1] for x in txt_output if len(x) >= 1]
+                with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}_plain_output.txt', 'a') as f:
+                    f.writelines(txt_output)
                 a2_lines = sorted(file['events'].items())
                 a2_lines = [x[1] for x in a2_lines if len(x) >= 1]
                 txt_len = 0
@@ -2651,11 +2665,15 @@ class BigBioDatasets(BaseDataset):
                     for gaid, line in enumerate(a2_line):
                         if line.startswith('T'):
                             field = line.split('\t')
-                            trigger_name = field[1].split(' ')[0]
-                            start = field[1].split(' ')[1]
-                            end = field[1].split(' ')[2]
-                            new_field = trigger_name + " " + str(int(start) + txt_len) + " " + str(int(end) + txt_len)
-                            a2_line[gaid] = field[0] + '\t' + new_field + '\t' + field[2]
+                            if len(field) == 3:
+                                trigger_name = field[1].split(' ')[0]
+                                start = field[1].split(' ')[1]
+                                end = field[1].split(' ')[2]
+                                if start.isdigit() and end.isdigit():
+                                    new_field = trigger_name + " " + str(int(start) + txt_len) + " " + str(int(end) + txt_len)
+                                    a2_line[gaid] = field[0] + '\t' + new_field + '\t' + field[2]
+                            else:
+                                print('fail')
                     txt_len += len(txt_lines[guid])
                 with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}.a2', 'a') as f:
                     for a2_line in a2_lines:

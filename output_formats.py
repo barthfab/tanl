@@ -332,7 +332,7 @@ class BaseOutputFormat(ABC):
                     output_tokens.append(token)
 
         # check if we reconstructed the original sentence correctly, after removing all spaces
-        wrong_reconstruction = (''.join(output_tokens) != ' '.join(example_tokens))
+        wrong_reconstruction = (''.join(output_tokens) != ''.join(example_tokens))
         reconstructed_sentence = ''.join(output_tokens)
         # now we align self.tokens with output_tokens (with dynamic programming)
         cost = np.zeros((len(example_tokens) + 1, len(output_tokens) + 1))  # cost of alignment between tokens[:i]
@@ -878,8 +878,8 @@ class BigBioOutputFormat(BaseOutputFormat):
         augmentations = [([(type,), (tail.text,role), (...) ], #, #), (...)]
         """
         augmentations = []
-        for entity in example.entities:
-            augmentations.append(([(entity.type,)], entity.start, entity.end))
+        #for entity in example.entities:
+        #    augmentations.append(([(entity.type,)], entity.start, entity.end))
         for event in example.events:
             arguments = [(''.join(event.type),)]
             for argument in event.arguments:
@@ -905,6 +905,10 @@ class BigBioOutputFormat(BaseOutputFormat):
     def get_all_events(self, example: InputExample, output_sentence: str, tokenizer=None, event_types: list[str] = None,
                        entity_offset: int=None):
         example_tokens_char = list(tokenizer.convert_tokens_to_string(example.tokens))
+        if example.id.endswith('_0'):
+            output_sentence = output_sentence + " \n"
+        else:
+            output_sentence = " " + output_sentence
         predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example_tokens_char, output_sentence,)
         output_events = []
         output_lines = []
@@ -974,7 +978,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                     tag_len_error = True
             event.arguments = arguments
             output_lines.append(f'{event.id}\t{event.type}:T{event.id[1:]}{string_args}\n')
-        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction
+        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, output_sentence
 
     def run_inference(self, example: InputExample, output_sentence: str, tokenizer=None, entity_types: list[str]=None,
                       event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):

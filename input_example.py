@@ -131,6 +131,7 @@ class InputExample:
     utterance_tokens: str = None
 
 
+
 @dataclass
 class CorefDocument:
     """
