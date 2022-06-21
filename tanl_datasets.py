@@ -2485,6 +2485,7 @@ class BigBioDatasets(BaseDataset):
     entity_types = []
     eval_run = 0
     event_types = []
+    sentence_offset = {}
 
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
@@ -2542,6 +2543,7 @@ class BigBioDatasets(BaseDataset):
                         entities=example_entities,
                         events=example_events
                     ))
+                    self.sentence_offset[passage['id'] + f"_{guid}"] = s_t
                     if guid == 0 and header_offset > 0:
                         s_t += header_offset
                     s_t += len(sentence) + 1
@@ -2570,27 +2572,36 @@ class BigBioDatasets(BaseDataset):
             id = example.id.split('_')[0]
             ex_id = int(example.id.split('_')[-1])
             ep_num = len(output_files)
+
+            #create new ids for events
             if len(entity_offset) < ep_num:
                 entity_offset.append({id: 200})
             else:
                 if id not in entity_offset[ep_num - 1].keys():
                     entity_offset[ep_num - 1].update({id: 200})
             #parse all events in the given sentence
+            '''
             if example.id.endswith('_0'):
                 output_sentence = output_sentence + " \n"
-                example.tokens.insert(0, ' \n')
+                example.tokens.insert(-1, ' \n')
             elif not example.id.endswith('_1'):
                 output_sentence = " " + output_sentence
                 example.tokens.insert(0, ' ')
-            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction= \
-                self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_num - 1][id])
+            '''
+            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
+                self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_num - 1][id], self.sentence_offset[example.id])
+
+
             entity_offset[ep_num - 1][id] += offset
+
+
+            #sort output sentence in epoch{pubmed-id{text, events, output sentence}}
             if id in output_files[f'Epoch {ep_num}'].keys():
                 if ex_id in output_files[f'Epoch {ep_num}'][id]['text'].keys():
                     output_files[f'Epoch {ep_num + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
                                                                 'events': {ex_id: output_lines},
                                                                 'plain_output': {ex_id: output_sentence},
-                                                                'orig_sen_len': {ex_id: len(example.tokens)}}}
+                                                                }}
                     error_files[f'Epoch {ep_num + 1}'] = self.update_error(error_files['Error'], format_error,
                                                                            argument_error, tag_len_error,
                                                                            type_error, wrong_reconstruction)
@@ -2598,7 +2609,6 @@ class BigBioDatasets(BaseDataset):
                     output_files[f'Epoch {ep_num}'][id]['text'][ex_id] = reconstructed_sentence
                     output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = output_lines
                     output_files[f'Epoch {ep_num}'][id]['plain_output'][ex_id] = output_sentence
-                    output_files[f'Epoch {ep_num}'][id]['orig_sen_len'][ex_id] = len(example.tokens)
                     error_files[f'Epoch {ep_num}'].update(
                         self.update_error(error_files[f'Epoch {ep_num}'], format_error, argument_error, tag_len_error,
                                           type_error, wrong_reconstruction))
@@ -2607,14 +2617,16 @@ class BigBioDatasets(BaseDataset):
                 output_files[f'Epoch {ep_num}'][id] = {'text': {ex_id: reconstructed_sentence},
                                                        'events': {ex_id: output_lines},
                                                        'plain_output': {ex_id: output_sentence},
-                                                       'orig_sen_len': {ex_id: len(example.tokens)}}
+                                                       }
                 error_files[f'Epoch {ep_num}'].update(self.update_error(error_files[f'Epoch {ep_num}'], format_error,
                                                                         argument_error, tag_len_error,
                                                                         type_error, wrong_reconstruction))
 
+        #make output dir
         if not os.path.exists(f'./output_files/{current_time}'):
             os.makedirs(f'./output_files/{current_time}')
         epochs = os.listdir(f'./output_files/{current_time}')
+
         #write eval results in a2 file
         for name, epoch in output_files.items():
             ep_id = int(name.split(' ')[-1])
@@ -2625,18 +2637,24 @@ class BigBioDatasets(BaseDataset):
             else:
                 os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
                 os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
+
+            #log error results
             wandb.log({'global_format_error': error_files[name]["global_format_error"],
                        'global_argument_error': error_files[name]["global_argument_error"],
                        'global_tag_len_error': error_files[name]["global_tag_len_error"],
                        'global_type_error': error_files[name]["global_type_error"],
                        'global_reconstruction_error': error_files[name]["global_reconstruction_error"],
                        })
+
+            #safe output error
             with open(f'./output_files/{current_time}/Epoch {ep_id}/bugreport.txt', 'a') as f:
                 f.write(f'format_error: {error_files[name]["global_format_error"]}\n')
                 f.write(f'tag_len_error: {error_files[name]["global_tag_len_error"]}\n')
                 f.write(f'argument_error: {error_files[name]["global_argument_error"]}\n')
                 f.write(f'type_error: {error_files[name]["global_type_error"]}\n')
                 f.write(f'reconstruction_error: {error_files[name]["global_reconstruction_error"]}\n')
+
+            #print a2, txt and output sentences
             for pmid, file in epoch.items():
                 txt_lines = sorted(file['text'].items())
                 txt_lines = [x[1] for x in txt_lines if len(x) >= 1]
@@ -2648,24 +2666,6 @@ class BigBioDatasets(BaseDataset):
                     f.writelines(txt_output)
                 a2_lines = sorted(file['events'].items())
                 a2_lines = [x[1] for x in a2_lines if len(x) >= 1]
-                txt_len = 0
-
-                orig_sen_len = sorted(file['orig_sen_len'].items())
-                orig_sen_len = [x[1] for x in orig_sen_len if len(x) >= 1]
-                for guid, a2_line in enumerate(a2_lines):
-                    for gaid, line in enumerate(a2_line):
-                        if line.startswith('T'):
-                            field = line.split('\t')
-                            if len(field) == 3:
-                                trigger_name = field[1].split(' ')[0]
-                                start = field[1].split(' ')[1]
-                                end = field[1].split(' ')[2]
-                                if start.isdigit() and end.isdigit():
-                                    new_field = trigger_name + " " + str(int(start) + txt_len) + " " + str(int(end) + txt_len)
-                                    a2_line[gaid] = field[0] + '\t' + new_field + '\t' + field[2]
-                            else:
-                                print('fail')
-                    txt_len += orig_sen_len[guid]
                 with open(f'./output_files/{current_time}/A2_Epoch_{ep_id}/{pmid}.a2', 'a') as f:
                     for a2_line in a2_lines:
                         f.writelines(a2_line)

@@ -223,7 +223,7 @@ class BaseOutputFormat(ABC):
 
         return unmatched_predicted_entities, wrong_reconstruction
 
-    def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str) -> Tuple[list, bool, str]:
+    def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str, sentence_offset) -> Tuple[list, bool, str]:
         """
         Parse an output sentence in augmented language and extract inferred entities and tags.
         Return a pair (predicted_entities, wrong_reconstruction), where:
@@ -391,7 +391,7 @@ class BaseOutputFormat(ABC):
 
             if new_start is not None:
                 # predict entity
-                entity_tuple = (entity_name, entity_tags, new_start, new_end + 1)
+                entity_tuple = (entity_name, entity_tags, new_start + sentence_offset, new_end + 1 + sentence_offset)
                 predicted_entities.append(entity_tuple)
 
         return predicted_entities, wrong_reconstruction, reconstructed_sentence
@@ -892,8 +892,8 @@ class BigBioOutputFormat(BaseOutputFormat):
 
 
     def get_all_events(self, example: InputExample, output_sentence: str, event_types: list[str] = None,
-                       entity_offset: int=None):
-        predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example.tokens, output_sentence,)
+                       entity_offset: int=None, sentence_offset: int=None):
+        predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example.tokens, output_sentence, sentence_offset)
         output_events = []
         output_lines = []
         format_error = False
