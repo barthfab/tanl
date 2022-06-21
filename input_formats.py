@@ -34,7 +34,7 @@ class BaseInputFormat(ABC):
         return res
 
     @abstractmethod
-    def _format_input(self, example: InputExample, tokenizer=None) -> str:
+    def _format_input(self, example: InputExample) -> str:
         raise NotImplementedError
 
 
@@ -125,4 +125,4 @@ class BigBioInputFormat(BaseInputFormat):
                                     self.END_ENTITY_TOKEN,
                                     )
         else:
-            return example
+            return ''.join(example.tokens)
