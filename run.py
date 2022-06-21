@@ -27,7 +27,7 @@ sys.path.append("/vol/fob-vol7/mi19/barthfab/biomedical")
 
 
 def main():
-    #assert torch.cuda.is_available(), 'CUDA not available'
+    assert torch.cuda.is_available(), 'CUDA not available'
 
     # parse arguments
     parser = argparse.ArgumentParser()
