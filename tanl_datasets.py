@@ -2576,21 +2576,29 @@ class BigBioDatasets(BaseDataset):
                 if id not in entity_offset[ep_num - 1].keys():
                     entity_offset[ep_num - 1].update({id: 200})
             #parse all events in the given sentence
-            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, mod_output_sentence = \
+            if example.id.endswith('_0'):
+                output_sentence = output_sentence + " \n"
+                example.tokens.insert(0, ' \n')
+            elif not example.id.endswith('_1'):
+                output_sentence = " " + output_sentence
+                example.tokens.insert(0, ' ')
+            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction= \
                 self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_num - 1][id])
             entity_offset[ep_num - 1][id] += offset
             if id in output_files[f'Epoch {ep_num}'].keys():
                 if ex_id in output_files[f'Epoch {ep_num}'][id]['text'].keys():
                     output_files[f'Epoch {ep_num + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
                                                                 'events': {ex_id: output_lines},
-                                                                'plain_output': {ex_id: mod_output_sentence}}}
+                                                                'plain_output': {ex_id: output_sentence},
+                                                                'orig_sen_len': {ex_id: len(example.tokens)}}}
                     error_files[f'Epoch {ep_num + 1}'] = self.update_error(error_files['Error'], format_error,
                                                                            argument_error, tag_len_error,
                                                                            type_error, wrong_reconstruction)
                 else:
                     output_files[f'Epoch {ep_num}'][id]['text'][ex_id] = reconstructed_sentence
                     output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = output_lines
-                    output_files[f'Epoch {ep_num}'][id]['plain_output'][ex_id] = mod_output_sentence
+                    output_files[f'Epoch {ep_num}'][id]['plain_output'][ex_id] = output_sentence
+                    output_files[f'Epoch {ep_num}'][id]['orig_sen_len'][ex_id] = len(example.tokens)
                     error_files[f'Epoch {ep_num}'].update(
                         self.update_error(error_files[f'Epoch {ep_num}'], format_error, argument_error, tag_len_error,
                                           type_error, wrong_reconstruction))
@@ -2598,7 +2606,8 @@ class BigBioDatasets(BaseDataset):
             else:
                 output_files[f'Epoch {ep_num}'][id] = {'text': {ex_id: reconstructed_sentence},
                                                        'events': {ex_id: output_lines},
-                                                       'plain_output': {ex_id: mod_output_sentence}}
+                                                       'plain_output': {ex_id: output_sentence},
+                                                       'orig_sen_len': {ex_id: len(example.tokens)}}
                 error_files[f'Epoch {ep_num}'].update(self.update_error(error_files[f'Epoch {ep_num}'], format_error,
                                                                         argument_error, tag_len_error,
                                                                         type_error, wrong_reconstruction))
@@ -2612,8 +2621,10 @@ class BigBioDatasets(BaseDataset):
             if epochs:
                 ep_id = ep_id + len(epochs)
                 os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
+                os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
             else:
                 os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
+                os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
             wandb.log({'global_format_error': error_files[name]["global_format_error"],
                        'global_argument_error': error_files[name]["global_argument_error"],
                        'global_tag_len_error': error_files[name]["global_tag_len_error"],
@@ -2638,6 +2649,9 @@ class BigBioDatasets(BaseDataset):
                 a2_lines = sorted(file['events'].items())
                 a2_lines = [x[1] for x in a2_lines if len(x) >= 1]
                 txt_len = 0
+
+                orig_sen_len = sorted(file['orig_sen_len'].items())
+                orig_sen_len = [x[1] for x in orig_sen_len if len(x) >= 1]
                 for guid, a2_line in enumerate(a2_lines):
                     for gaid, line in enumerate(a2_line):
                         if line.startswith('T'):
@@ -2651,8 +2665,8 @@ class BigBioDatasets(BaseDataset):
                                     a2_line[gaid] = field[0] + '\t' + new_field + '\t' + field[2]
                             else:
                                 print('fail')
-                    txt_len += len(txt_lines[guid])
-                with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}.a2', 'a') as f:
+                    txt_len += orig_sen_len[guid]
+                with open(f'./output_files/{current_time}/A2_Epoch_{ep_id}/{pmid}.a2', 'a') as f:
                     for a2_line in a2_lines:
                         f.writelines(a2_line)
 

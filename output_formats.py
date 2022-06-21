@@ -868,8 +868,8 @@ class BigBioOutputFormat(BaseOutputFormat):
         augmentations = [([(type,), (tail.text,role), (...) ], #, #), (...)]
         """
         augmentations = []
-        for entity in example.entities:
-            augmentations.append(([(entity.type,)], entity.start, entity.end))
+        #for entity in example.entities:
+        #    augmentations.append(([(entity.type,)], entity.start, entity.end))
         for event in example.events:
             arguments = [(''.join(event.type),)]
             for argument in event.arguments:
@@ -893,10 +893,6 @@ class BigBioOutputFormat(BaseOutputFormat):
 
     def get_all_events(self, example: InputExample, output_sentence: str, event_types: list[str] = None,
                        entity_offset: int=None):
-        if example.id.endswith('_0'):
-            output_sentence = output_sentence + " \n"
-        elif not example.id.endswith('_1'):
-            output_sentence = " " + output_sentence
         predicted_events, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example.tokens, output_sentence,)
         output_events = []
         output_lines = []
@@ -951,7 +947,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                     else:
                         #check if the argument is an entity
                         #todo see if this works
-                        argument = [e for e in example.entities if example.tokens[e.start:e.end].strip() == tag_name.strip()]
+                        argument = [e for e in example.entities if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
                         if argument:
                             #find the closest entity to the corresponding event
                             argument.sort(key=lambda x: (x.start - event.start))
@@ -966,7 +962,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                     tag_len_error = True
             event.arguments = arguments
             output_lines.append(f'{event.id}\t{event.type}:T{event.id[1:]}{string_args}\n')
-        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, output_sentence
+        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction
 
     def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
                       event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):
