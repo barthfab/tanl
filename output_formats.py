@@ -930,7 +930,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                 if len(tag) == 2:
                     tag_name, tag_type = tag
                     #check if the argument is an event
-                    argument = [e for e in output_events if e.text.strip() == tag_name.strip()]
+                    argument = [e for e in output_events if e.text.strip() == tag_name.strip() and e.id != event.id]
                     if argument:
                         if len(argument) == 1:
                             arg_event = argument[0]
