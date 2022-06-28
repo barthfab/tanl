@@ -901,6 +901,7 @@ class BigBioOutputFormat(BaseOutputFormat):
         argument_error = False
         type_error = False
         offset = 0
+        trigger_offset = 0
         for predicted_event in predicted_events:
             event_name, tags, start, end = predicted_event
             if len(tags) == 0 or len(tags[0]) > 1:
@@ -910,6 +911,9 @@ class BigBioOutputFormat(BaseOutputFormat):
             if tags[0][0].strip() in event_types:
                 #create an event for every found event in output string
                 offset += 1
+                if f'T{entity_offset + trigger_offset}\t{tags[0][0]} {start} {end}\t{event_name}\n' not in output_lines:
+                    trigger_offset += 1
+                    output_lines.append(f'T{entity_offset + trigger_offset}\t{tags[0][0]} {start} {end}\t{event_name}\n')
                 output_events.append(Event(
                     id=f'E{entity_offset + offset}',
                     type=tags[0][0],
@@ -917,8 +921,8 @@ class BigBioOutputFormat(BaseOutputFormat):
                     start=start,
                     end=end,
                     arguments=tags[1:],
+                    trigger_id=f'T{entity_offset + trigger_offset}'
                 ))
-                output_lines.append(f'T{entity_offset + offset}\t{tags[0][0]} {start} {end}\t{event_name}\n')
             else:
                 type_error = True
                 continue
@@ -961,7 +965,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                 else:
                     tag_len_error = True
             event.arguments = arguments
-            output_lines.append(f'{event.id}\t{event.type}:T{event.id[1:]}{string_args}\n')
+            output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
         return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction
 
     def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,

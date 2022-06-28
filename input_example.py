@@ -85,6 +85,7 @@ class Event:
     start: int  # start index in the sentence
     end: int  # end index in the sentence
     arguments: List[Argument] = None
+    trigger_id: str = None
 
 
 @dataclass

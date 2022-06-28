@@ -12,6 +12,7 @@ from itertools import islice
 from collections import Counter, defaultdict
 import numpy as np
 import random
+import pandas
 import networkx as nx
 from typing import Dict, List, Tuple, Set
 import torch
@@ -2632,11 +2633,9 @@ class BigBioDatasets(BaseDataset):
             ep_id = int(name.split(' ')[-1])
             if epochs:
                 ep_id = ep_id + len(epochs)
-                os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
-                os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
-            else:
-                os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
-                os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
+            os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
+            os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
+            os.makedirs(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/')
 
             #log error results
             wandb.log({'global_format_error': error_files[name]["global_format_error"],
@@ -2669,6 +2668,13 @@ class BigBioDatasets(BaseDataset):
                 with open(f'./output_files/{current_time}/A2_Epoch_{ep_id}/{pmid}.a2', 'a') as f:
                     for a2_line in a2_lines:
                         f.writelines(a2_line)
+            #get evaluation results
+            os.system(f'python2 pc_eval.py -r ./original-data/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
+            results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
+            wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),
+                       "precision": results[results["F-score"] != 100]["precision"].mean(),
+                       "recall": results[results["F-score"] != 100]["recall"].mean()})
+
 
         #unnecessary return
         return {'dir': f'./output_files/{current_time}'}
