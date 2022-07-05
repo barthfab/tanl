@@ -2548,6 +2548,7 @@ class BigBioDatasets(BaseDataset):
                     if guid == 0 and header_offset > 0:
                         s_t += header_offset
                     s_t += len(sentence) + 1
+
         return examples
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
@@ -2561,6 +2562,7 @@ class BigBioDatasets(BaseDataset):
                                    'global_tag_len_error': 0,
                                    'global_type_error': 0,
                                    'global_reconstruction_error': 0,
+                                   'global_high_order_error': 0,
                                    }
                        }
         entity_offset = [{}]
@@ -2589,7 +2591,7 @@ class BigBioDatasets(BaseDataset):
                 output_sentence = " " + output_sentence
                 example.tokens.insert(0, ' ')
             '''
-            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction = \
+            output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error = \
                 self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_num - 1][id], self.sentence_offset[example.id])
 
 
@@ -2605,14 +2607,14 @@ class BigBioDatasets(BaseDataset):
                                                                 }}
                     error_files[f'Epoch {ep_num + 1}'] = self.update_error(error_files['Error'], format_error,
                                                                            argument_error, tag_len_error,
-                                                                           type_error, wrong_reconstruction)
+                                                                           type_error, wrong_reconstruction, high_order_error)
                 else:
                     output_files[f'Epoch {ep_num}'][id]['text'][ex_id] = reconstructed_sentence
                     output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = output_lines
                     output_files[f'Epoch {ep_num}'][id]['plain_output'][ex_id] = output_sentence
                     error_files[f'Epoch {ep_num}'].update(
                         self.update_error(error_files[f'Epoch {ep_num}'], format_error, argument_error, tag_len_error,
-                                          type_error, wrong_reconstruction))
+                                          type_error, wrong_reconstruction, high_order_error))
 
             else:
                 output_files[f'Epoch {ep_num}'][id] = {'text': {ex_id: reconstructed_sentence},
@@ -2621,7 +2623,23 @@ class BigBioDatasets(BaseDataset):
                                                        }
                 error_files[f'Epoch {ep_num}'].update(self.update_error(error_files[f'Epoch {ep_num}'], format_error,
                                                                         argument_error, tag_len_error,
-                                                                        type_error, wrong_reconstruction))
+                                                                        type_error, wrong_reconstruction, high_order_error))
+            if not os.path.exists(f'./output_files/{current_time}'):
+                os.makedirs(f'./output_files/{current_time}')
+            if wrong_reconstruction:
+                with open(f'./output_files/{current_time}/reconstruction_error.txt', 'a') as f:
+                    f.write(example.id + '\n')
+                    f.write(''.join(example.tokens) + '\n')
+                    f.write(reconstructed_sentence + '\n')
+                    f.write(output_sentence + '\n')
+            if argument_error:
+                with open(f'./output_files/{current_time}/argument_error.txt', 'a') as f:
+                    f.write(example.id + '\n')
+                    f.write(''.join(example.tokens) + '\n')
+                    f.write(reconstructed_sentence + '\n')
+                    f.write(output_sentence + '\n')
+
+
 
         #make output dir
         if not os.path.exists(f'./output_files/{current_time}'):
@@ -2643,6 +2661,7 @@ class BigBioDatasets(BaseDataset):
                        'global_tag_len_error': error_files[name]["global_tag_len_error"],
                        'global_type_error': error_files[name]["global_type_error"],
                        'global_reconstruction_error': error_files[name]["global_reconstruction_error"],
+                       'global_high_order_error': error_files[name]["global_high_order_error"],
                        })
 
             #safe output error
@@ -2652,6 +2671,7 @@ class BigBioDatasets(BaseDataset):
                 f.write(f'argument_error: {error_files[name]["global_argument_error"]}\n')
                 f.write(f'type_error: {error_files[name]["global_type_error"]}\n')
                 f.write(f'reconstruction_error: {error_files[name]["global_reconstruction_error"]}\n')
+                f.write(f'global_high_order_error: { error_files[name]["global_high_order_error"]}\n')
 
             #print a2, txt and output sentences
             for pmid, file in epoch.items():
@@ -2669,17 +2689,19 @@ class BigBioDatasets(BaseDataset):
                     for a2_line in a2_lines:
                         f.writelines(a2_line)
             #get evaluation results
-            os.system(f'python2 pc_eval.py -r ./original-data/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
-            results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
-            wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),
-                       "precision": results[results["F-score"] != 100]["precision"].mean(),
-                       "recall": results[results["F-score"] != 100]["recall"].mean()})
+            if 'bionlp_st_2013_pc' in self.dataset_names:
+                os.system(f'python2 pc_eval.py -r {data_args.data_dir}/original-data/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
+            if os.path.isfile(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv'):
+                results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
+                wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),
+                           "precision": results[results["F-score"] != 100]["precision"].mean(),
+                           "recall": results[results["F-score"] != 100]["recall"].mean()})
 
 
         #unnecessary return
         return {'dir': f'./output_files/{current_time}'}
 
-    def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction):
+    def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error):
         if format_error:
             epoch['global_format_error'] += 1
         if argument_error:
@@ -2690,4 +2712,6 @@ class BigBioDatasets(BaseDataset):
             epoch['global_type_error'] += 1
         if wrong_reconstruction:
             epoch['global_reconstruction_error'] += 1
+        if high_order_error:
+            epoch['global_high_order_error'] += 1
         return epoch

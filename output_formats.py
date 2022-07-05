@@ -900,6 +900,7 @@ class BigBioOutputFormat(BaseOutputFormat):
         tag_len_error = False
         argument_error = False
         type_error = False
+        high_order_error = False
         offset = 0
         trigger_offset = 0
         for predicted_event in predicted_events:
@@ -935,9 +936,12 @@ class BigBioOutputFormat(BaseOutputFormat):
                     tag_name, tag_type = tag
                     #check if the argument is an event
                     argument = [e for e in output_events if e.text.strip() == tag_name.strip() and e.id != event.id]
+                    if not argument:
+                        argument = [e for e in output_events if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip() and e.id != event.id]
                     if argument:
                         if len(argument) == 1:
                             arg_event = argument[0]
+                            x = [a for a in output_events if a.arguments ]
                             string_args += " " + tag_type + ':' + arg_event.id
                             arguments.append(Argument(role=tag_type,
                                                       ref_id=arg_event.id
@@ -955,18 +959,20 @@ class BigBioOutputFormat(BaseOutputFormat):
                         if argument:
                             #find the closest entity to the corresponding event
                             argument.sort(key=lambda x: (x.start - event.start))
-
                             string_args += " " + tag_type + ':' + argument[0].id.split('_')[-1]
                             arguments.append(Argument(role=tag_type,
                                                       ref_id=argument[0].id.split('_')[-1]
                                                       ))
                         else:
+                            high_val_error = [e for e in example.events if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
+                            if high_val_error:
+                                high_order_error = True
                             argument_error = True
                 else:
                     tag_len_error = True
             event.arguments = arguments
             output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
-        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction
+        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error
 
     def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
                       event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):
