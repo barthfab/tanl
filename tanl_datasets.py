@@ -2508,6 +2508,8 @@ class BigBioDatasets(BaseDataset):
                     header_offset = 1
                 sentences = segmenter.split_single(passage['text'][0])
                 for guid, sentence in enumerate(sentences):
+                    if '[' in sentence:
+                        continue
                     entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
                                 and ta['offsets'][0][1] <= s_t + len(sentence)]
                     events = [ta for ta in dataset['events'] if ta['trigger']['offsets'][0][0] >= s_t
@@ -2691,6 +2693,8 @@ class BigBioDatasets(BaseDataset):
             #get evaluation results
             if 'bionlp_st_2013_pc' in self.dataset_names:
                 os.system(f'python2 pc_eval.py -r {data_args.data_dir}/original-data/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
+            if 'bionlp_st_2013_ge' in self.dataset_names:
+                os.system()
             if os.path.isfile(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv'):
                 results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
                 wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),

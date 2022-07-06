@@ -221,7 +221,7 @@ class BaseOutputFormat(ABC):
                 entity_tuple = (entity_name, entity_tags, new_start, new_end + 1)
                 predicted_entities.append(entity_tuple)
 
-        return unmatched_predicted_entities, wrong_reconstruction
+        return predicted_entities, wrong_reconstruction
 
     def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str, sentence_offset) -> Tuple[list, bool, str]:
         """
@@ -954,7 +954,6 @@ class BigBioOutputFormat(BaseOutputFormat):
                                                       ))
                     else:
                         #check if the argument is an entity
-                        #todo see if this works
                         argument = [e for e in example.entities if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
                         if argument:
                             #find the closest entity to the corresponding event
