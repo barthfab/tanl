@@ -8,6 +8,7 @@ import os
 import logging
 import json
 import datasets
+import subprocess
 from itertools import islice
 from collections import Counter, defaultdict
 import numpy as np
@@ -2475,9 +2476,10 @@ class MultiWoz(BaseDataset):
 class BigBioDatasets(BaseDataset):
     name = 'bigbio_kb'
 
-    dataset_names = [
-        "bionlp_st_2013_pc"]
-    '''"bionlp_st_2013_gro",
+    dataset_names = ["bionlp_st_2011_ge"]
+    '''
+    "bionlp_st_2013_pc"
+    "bionlp_st_2013_gro",
     "bionlp_st_2013_ge",
     "bionlp_st_2013_cg",
     "bionlp_st_2011_rel",
@@ -2574,16 +2576,16 @@ class BigBioDatasets(BaseDataset):
 
         #eval every result
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
-            id = example.id.split('_')[0]
+            id = example.id.split('__')[0]
             ex_id = int(example.id.split('_')[-1])
-            ep_num = len(output_files)
+            ep_id = len(output_files)
 
             #create new ids for events
-            if len(entity_offset) < ep_num:
+            if len(entity_offset) < ep_id:
                 entity_offset.append({id: 200})
             else:
-                if id not in entity_offset[ep_num - 1].keys():
-                    entity_offset[ep_num - 1].update({id: 200})
+                if id not in entity_offset[ep_id - 1].keys():
+                    entity_offset[ep_id - 1].update({id: 200})
             #parse all events in the given sentence
             '''
             if example.id.endswith('_0'):
@@ -2594,36 +2596,36 @@ class BigBioDatasets(BaseDataset):
                 example.tokens.insert(0, ' ')
             '''
             output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error = \
-                self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_num - 1][id], self.sentence_offset[example.id])
+                self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_id - 1][id], self.sentence_offset[example.id])
 
 
-            entity_offset[ep_num - 1][id] += offset
+            entity_offset[ep_id - 1][id] += offset
 
 
             #sort output sentence in epoch{pubmed-id{text, events, output sentence}}
-            if id in output_files[f'Epoch {ep_num}'].keys():
-                if ex_id in output_files[f'Epoch {ep_num}'][id]['text'].keys():
-                    output_files[f'Epoch {ep_num + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
+            if id in output_files[f'Epoch {ep_id}'].keys():
+                if ex_id in output_files[f'Epoch {ep_id}'][id]['text'].keys():
+                    output_files[f'Epoch {ep_id + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
                                                                 'events': {ex_id: output_lines},
                                                                 'plain_output': {ex_id: output_sentence},
                                                                 }}
-                    error_files[f'Epoch {ep_num + 1}'] = self.update_error(error_files['Error'], format_error,
+                    error_files[f'Epoch {ep_id + 1}'] = self.update_error(error_files['Error'], format_error,
                                                                            argument_error, tag_len_error,
                                                                            type_error, wrong_reconstruction, high_order_error)
                 else:
-                    output_files[f'Epoch {ep_num}'][id]['text'][ex_id] = reconstructed_sentence
-                    output_files[f'Epoch {ep_num}'][id]['events'][ex_id] = output_lines
-                    output_files[f'Epoch {ep_num}'][id]['plain_output'][ex_id] = output_sentence
-                    error_files[f'Epoch {ep_num}'].update(
-                        self.update_error(error_files[f'Epoch {ep_num}'], format_error, argument_error, tag_len_error,
+                    output_files[f'Epoch {ep_id}'][id]['text'][ex_id] = reconstructed_sentence
+                    output_files[f'Epoch {ep_id}'][id]['events'][ex_id] = output_lines
+                    output_files[f'Epoch {ep_id}'][id]['plain_output'][ex_id] = output_sentence
+                    error_files[f'Epoch {ep_id}'].update(
+                        self.update_error(error_files[f'Epoch {ep_id}'], format_error, argument_error, tag_len_error,
                                           type_error, wrong_reconstruction, high_order_error))
 
             else:
-                output_files[f'Epoch {ep_num}'][id] = {'text': {ex_id: reconstructed_sentence},
+                output_files[f'Epoch {ep_id}'][id] = {'text': {ex_id: reconstructed_sentence},
                                                        'events': {ex_id: output_lines},
                                                        'plain_output': {ex_id: output_sentence},
                                                        }
-                error_files[f'Epoch {ep_num}'].update(self.update_error(error_files[f'Epoch {ep_num}'], format_error,
+                error_files[f'Epoch {ep_id}'].update(self.update_error(error_files[f'Epoch {ep_id}'], format_error,
                                                                         argument_error, tag_len_error,
                                                                         type_error, wrong_reconstruction, high_order_error))
             if not os.path.exists(f'./output_files/{current_time}'):
@@ -2646,8 +2648,9 @@ class BigBioDatasets(BaseDataset):
         #make output dir
         if not os.path.exists(f'./output_files/{current_time}'):
             os.makedirs(f'./output_files/{current_time}')
+            os.makedirs(f"./output_files/{current_time}/junk/")
         epochs = os.listdir(f'./output_files/{current_time}')
-
+        epochs = [e for e in epochs if e.startswith('A2_Epoch_')]
         #write eval results in a2 file
         for name, epoch in output_files.items():
             ep_id = int(name.split(' ')[-1])
@@ -2690,20 +2693,95 @@ class BigBioDatasets(BaseDataset):
                 with open(f'./output_files/{current_time}/A2_Epoch_{ep_id}/{pmid}.a2', 'a') as f:
                     for a2_line in a2_lines:
                         f.writelines(a2_line)
-            #get evaluation results
-            if 'bionlp_st_2013_pc' in self.dataset_names:
-                os.system(f'python2 pc_eval.py -r {data_args.data_dir}/original-data/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
-            if 'bionlp_st_2013_ge' in self.dataset_names:
-                os.system()
-            if os.path.isfile(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv'):
-                results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
-                wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),
-                           "precision": results[results["F-score"] != 100]["precision"].mean(),
-                           "recall": results[results["F-score"] != 100]["recall"].mean()})
 
+            #get evaluation results
+            files = os.listdir(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
+            if 'pc'in self.dataset_names[0]:
+                self.eval_pc(files, current_time, ep_id)
+            else:
+                self.eval_ge(files, current_time, ep_id)
 
         #unnecessary return
         return {'dir': f'./output_files/{current_time}'}
+
+    def eval_pc(self, files, current_time, ep_id):
+        for file in files:
+            os.system(
+                f'python2 pc_eval.py -r ./original-data/bionlp_st_2013_pc/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/{file}')
+            eval_files = os.listdir(f'./output_files/{current_time}/Eval_Epoch_{ep_id}')
+            if file not in eval_files:
+                os.rename(f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}",
+                          f"./output_files/{current_time}/junk/{file}")
+        os.system(
+            f'python2 pc_eval.py -r ./original-data/bionlp_st_2013_pc/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
+        if os.path.isfile(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv'):
+            results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
+            wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),
+                       "precision": results[results["F-score"] != 100]["precision"].mean(),
+                       "recall": results[results["F-score"] != 100]["recall"].mean()})
+        for file in os.listdir(f'./output_files/{current_time}/junk/'):
+            os.rename(f"./output_files/{current_time}/junk/{file}", f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}")
+
+    def eval_ge(self, files, current_time, ep_id):
+        for file in files:
+            p = subprocess.Popen([f'perl', 'ge_eval.pl', '-g', f'./original-data/{self.dataset_names[0]}/devel/',
+                                  f'./output_files/{current_time}/A2_Epoch_{ep_id}/{file}'], shell=False)
+            try:
+                p.wait(2)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                os.rename(f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}",
+                          f"./output_files/{current_time}/junk/{file}")
+        output_promt = os.popen(
+            f'perl ge_eval.pl -g ./original-data/{self.dataset_names[0]}/devel/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*').readlines()
+        f1, prec, rec = 0, 0, 0
+        name = None
+        for line in output_promt[3:]:
+            if line.startswith('-'):
+                continue
+            fields = line.split(' ')
+            i = 0
+            for field in reversed(fields):
+                if ' ' in field:
+                    continue
+                if field.endswith('\n'):
+                    f1 = float(field.split('\n')[0])
+                    i += 1
+                if i == 1:
+                    prec = float(field)
+                    i += 1
+                if i == 2:
+                    rec = float(field)
+                    i += 1
+                if field in ['Gene_expression', 'Transcription', 'Protein_catabolism', 'Phosphorylation',
+                             'Localization', '=[SVT-TOTAL]=', 'Binding', '==[EVT-TOTAL]==', 'Regulation',
+                             'Positive_regulation', 'Negative_regulation', '==[REG-TOTAL]==', '==[ALL-TOTAL]==']:
+                    name = field
+                    i += 1
+                    break
+            if name.startswith('='):
+                if 'ALL-TOTAL' in name:
+                    wandb.log({f"F1": f1,
+                               f"precision": prec,
+                               f"recall": rec})
+                elif 'REG-TOTAL' in name:
+                    wandb.log({f"Reg-total F1": f1,
+                               f"Reg-total precision": prec,
+                               f"Reg-total recall": rec})
+                elif 'SVT-TOTAL' in name:
+                    wandb.log({f"SVT-total F1": f1,
+                               f"SVT-total precision": prec,
+                               f"SVT-total recall": rec})
+                elif 'EVT-TOTAL' in name:
+                    wandb.log({f"EVT-total F1": f1,
+                               f"EVT-total precision": prec,
+                               f"EVT-total recall": rec})
+            else:
+                wandb.log({f"{name} F1": f1,
+                           f"{name} precision": prec,
+                           f"{name} recall": rec})
+        for file in os.listdir(f'./output_files/{current_time}/junk/'):
+            os.rename(f"./output_files/{current_time}/junk/{file}", f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}")
 
     def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error):
         if format_error:
