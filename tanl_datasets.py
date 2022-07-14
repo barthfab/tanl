@@ -2556,7 +2556,7 @@ class BigBioDatasets(BaseDataset):
         return examples
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
-                         macro: bool = False, tokenizer=None):
+                         macro: bool = False, output_dir: str='./output_files'):
         """
         Evaluate model on this dataset.
         """
@@ -2586,15 +2586,6 @@ class BigBioDatasets(BaseDataset):
             else:
                 if id not in entity_offset[ep_id - 1].keys():
                     entity_offset[ep_id - 1].update({id: 200})
-            #parse all events in the given sentence
-            '''
-            if example.id.endswith('_0'):
-                output_sentence = output_sentence + " \n"
-                example.tokens.insert(-1, ' \n')
-            elif not example.id.endswith('_1'):
-                output_sentence = " " + output_sentence
-                example.tokens.insert(0, ' ')
-            '''
             output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error = \
                 self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_id - 1][id], self.sentence_offset[example.id])
 
@@ -2628,16 +2619,18 @@ class BigBioDatasets(BaseDataset):
                 error_files[f'Epoch {ep_id}'].update(self.update_error(error_files[f'Epoch {ep_id}'], format_error,
                                                                         argument_error, tag_len_error,
                                                                         type_error, wrong_reconstruction, high_order_error))
-            if not os.path.exists(f'./output_files/{current_time}'):
-                os.makedirs(f'./output_files/{current_time}')
+            try:
+                os.mkdir(f'./{output_dir}/{current_time}')
+            except FileExistsError:
+                pass
             if wrong_reconstruction:
-                with open(f'./output_files/{current_time}/reconstruction_error.txt', 'a') as f:
+                with open(f'./{output_dir}/{current_time}/reconstruction_error.txt', 'a') as f:
                     f.write(example.id + '\n')
                     f.write(''.join(example.tokens) + '\n')
                     f.write(reconstructed_sentence + '\n')
                     f.write(output_sentence + '\n')
             if argument_error:
-                with open(f'./output_files/{current_time}/argument_error.txt', 'a') as f:
+                with open(f'./{output_dir}/{current_time}/argument_error.txt', 'a') as f:
                     f.write(example.id + '\n')
                     f.write(''.join(example.tokens) + '\n')
                     f.write(reconstructed_sentence + '\n')
@@ -2646,19 +2639,24 @@ class BigBioDatasets(BaseDataset):
 
 
         #make output dir
-        if not os.path.exists(f'./output_files/{current_time}'):
-            os.makedirs(f'./output_files/{current_time}')
-            os.makedirs(f"./output_files/{current_time}/junk/")
-        epochs = os.listdir(f'./output_files/{current_time}')
+        try:
+            os.mkdir(f'./{output_dir}/{current_time}')
+        except FileExistsError:
+            pass
+        try:
+            os.mkdir(f"./{output_dir}/{current_time}/junk/")
+        except FileExistsError:
+            pass
+        epochs = os.listdir(f'./{output_dir}/{current_time}')
         epochs = [e for e in epochs if e.startswith('A2_Epoch_')]
         #write eval results in a2 file
         for name, epoch in output_files.items():
             ep_id = int(name.split(' ')[-1])
             if epochs:
                 ep_id = ep_id + len(epochs)
-            os.makedirs(f'./output_files/{current_time}/Epoch {ep_id}/')
-            os.makedirs(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
-            os.makedirs(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/')
+            os.makedirs(f'./{output_dir}/{current_time}/Epoch {ep_id}/')
+            os.makedirs(f'./{output_dir}/{current_time}/A2_Epoch_{ep_id}/')
+            os.makedirs(f'./{output_dir}/{current_time}/Eval_Epoch_{ep_id}/')
 
             #log error results
             wandb.log({'global_format_error': error_files[name]["global_format_error"],
@@ -2670,7 +2668,7 @@ class BigBioDatasets(BaseDataset):
                        })
 
             #safe output error
-            with open(f'./output_files/{current_time}/Epoch {ep_id}/bugreport.txt', 'a') as f:
+            with open(f'./{output_dir}/{current_time}/Epoch {ep_id}/bugreport.txt', 'a') as f:
                 f.write(f'format_error: {error_files[name]["global_format_error"]}\n')
                 f.write(f'tag_len_error: {error_files[name]["global_tag_len_error"]}\n')
                 f.write(f'argument_error: {error_files[name]["global_argument_error"]}\n')
@@ -2682,58 +2680,58 @@ class BigBioDatasets(BaseDataset):
             for pmid, file in epoch.items():
                 txt_lines = sorted(file['text'].items())
                 txt_lines = [x[1] for x in txt_lines if len(x) >= 1]
-                with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}.txt', 'a') as f:
+                with open(f'./{output_dir}/{current_time}/Epoch {ep_id}/{pmid}.txt', 'a') as f:
                     f.writelines(txt_lines)
                 txt_output = sorted(file['plain_output'].items())
                 txt_output = [x[1] for x in txt_output if len(x) >= 1]
-                with open(f'./output_files/{current_time}/Epoch {ep_id}/{pmid}_plain_output.txt', 'a') as f:
+                with open(f'./{output_dir}/{current_time}/Epoch {ep_id}/{pmid}_plain_output.txt', 'a') as f:
                     f.writelines(txt_output)
                 a2_lines = sorted(file['events'].items())
                 a2_lines = [x[1] for x in a2_lines if len(x) >= 1]
-                with open(f'./output_files/{current_time}/A2_Epoch_{ep_id}/{pmid}.a2', 'a') as f:
+                with open(f'./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{pmid}.a2', 'a') as f:
                     for a2_line in a2_lines:
                         f.writelines(a2_line)
 
             #get evaluation results
-            files = os.listdir(f'./output_files/{current_time}/A2_Epoch_{ep_id}/')
+            files = os.listdir(f'./{output_dir}/{current_time}/A2_Epoch_{ep_id}/')
             if 'pc'in self.dataset_names[0]:
-                self.eval_pc(files, current_time, ep_id)
+                self.eval_pc(files, current_time, ep_id, output_dir)
             else:
-                self.eval_ge(files, current_time, ep_id)
+                self.eval_ge(files, current_time, ep_id, output_dir)
 
         #unnecessary return
-        return {'dir': f'./output_files/{current_time}'}
+        return {'dir': f'./{output_dir}/{current_time}'}
 
-    def eval_pc(self, files, current_time, ep_id):
+    def eval_pc(self, files, current_time, ep_id, output_dir):
         for file in files:
             os.system(
-                f'python2 pc_eval.py -r ./original-data/bionlp_st_2013_pc/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/{file}')
-            eval_files = os.listdir(f'./output_files/{current_time}/Eval_Epoch_{ep_id}')
+                f'python2 pc_eval.py -r ./original-data/bionlp_st_2013_pc/devel/ -o ./{output_dir}/{current_time}/Eval_Epoch_{ep_id}/ ./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}')
+            eval_files = os.listdir(f'./{output_dir}/{current_time}/Eval_Epoch_{ep_id}')
             if file not in eval_files:
-                os.rename(f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}",
-                          f"./output_files/{current_time}/junk/{file}")
+                os.rename(f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}",
+                          f"./{output_dir}/{current_time}/junk/{file}")
         os.system(
-            f'python2 pc_eval.py -r ./original-data/bionlp_st_2013_pc/devel/ -o ./output_files/{current_time}/Eval_Epoch_{ep_id}/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*')
-        if os.path.isfile(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv'):
-            results = pandas.read_csv(f'./output_files/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
+            f'python2 pc_eval.py -r ./original-data/bionlp_st_2013_pc/devel/ -o ./{output_dir}/{current_time}/Eval_Epoch_{ep_id}/ ./{output_dir}/{current_time}/A2_Epoch_{ep_id}/*')
+        if os.path.isfile(f'./{output_dir}/{current_time}/Eval_Epoch_{ep_id}/stats.csv'):
+            results = pandas.read_csv(f'./{output_dir}/{current_time}/Eval_Epoch_{ep_id}/stats.csv', sep='\t')
             wandb.log({"F1": results[results["F-score"] != 100]["F-score"].mean(),
                        "precision": results[results["F-score"] != 100]["precision"].mean(),
                        "recall": results[results["F-score"] != 100]["recall"].mean()})
-        for file in os.listdir(f'./output_files/{current_time}/junk/'):
-            os.rename(f"./output_files/{current_time}/junk/{file}", f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}")
+        for file in os.listdir(f'./{output_dir}/{current_time}/junk/'):
+            os.rename(f"./{output_dir}/{current_time}/junk/{file}", f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}")
 
-    def eval_ge(self, files, current_time, ep_id):
+    def eval_ge(self, files, current_time, ep_id, output_dir):
         for file in files:
             p = subprocess.Popen([f'perl', 'ge_eval.pl', '-g', f'./original-data/{self.dataset_names[0]}/devel/',
-                                  f'./output_files/{current_time}/A2_Epoch_{ep_id}/{file}'], shell=False)
+                                  f'./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}'], shell=False)
             try:
                 p.wait(2)
             except subprocess.TimeoutExpired:
                 p.kill()
-                os.rename(f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}",
-                          f"./output_files/{current_time}/junk/{file}")
+                os.rename(f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}",
+                          f"./{output_dir}/{current_time}/junk/{file}")
         output_promt = os.popen(
-            f'perl ge_eval.pl -g ./original-data/{self.dataset_names[0]}/devel/ ./output_files/{current_time}/A2_Epoch_{ep_id}/*').readlines()
+            f'perl ge_eval.pl -g ./original-data/{self.dataset_names[0]}/devel/ ./{output_dir}/{current_time}/A2_Epoch_{ep_id}/*').readlines()
         f1, prec, rec = 0, 0, 0
         name = None
         for line in output_promt[3:]:
@@ -2744,16 +2742,18 @@ class BigBioDatasets(BaseDataset):
             for field in reversed(fields):
                 if ' ' in field:
                     continue
+                if not field:
+                    continue
                 if field.endswith('\n'):
                     f1 = float(field.split('\n')[0])
                     i += 1
-                if i == 1:
+                elif i == 1:
                     prec = float(field)
                     i += 1
-                if i == 2:
+                elif i == 2:
                     rec = float(field)
                     i += 1
-                if field in ['Gene_expression', 'Transcription', 'Protein_catabolism', 'Phosphorylation',
+                elif field in ['Gene_expression', 'Transcription', 'Protein_catabolism', 'Phosphorylation',
                              'Localization', '=[SVT-TOTAL]=', 'Binding', '==[EVT-TOTAL]==', 'Regulation',
                              'Positive_regulation', 'Negative_regulation', '==[REG-TOTAL]==', '==[ALL-TOTAL]==']:
                     name = field
@@ -2780,8 +2780,8 @@ class BigBioDatasets(BaseDataset):
                 wandb.log({f"{name} F1": f1,
                            f"{name} precision": prec,
                            f"{name} recall": rec})
-        for file in os.listdir(f'./output_files/{current_time}/junk/'):
-            os.rename(f"./output_files/{current_time}/junk/{file}", f"./output_files/{current_time}/A2_Epoch_{ep_id}/{file}")
+        for file in os.listdir(f'./{output_dir}/{current_time}/junk/'):
+            os.rename(f"./{output_dir}/{current_time}/junk/{file}", f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}")
 
     def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error):
         if format_error:

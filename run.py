@@ -28,7 +28,7 @@ sys.path.append("/vol/fob-vol7/mi19/barthfab/biomedical")
 
 def main():
     assert torch.cuda.is_available(), 'CUDA not available'
-
+    wandb.init(project="huggingface")
     # parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('job')
@@ -294,7 +294,7 @@ def main():
 
                 res = evaluate(
                     model=model, dataset_name=dataset_name, data_args=data_args, tokenizer=tokenizer, split=split,
-                    seed=ep_idx, batch_size=training_args.per_device_eval_batch_size, gpu=args.gpu)
+                    seed=ep_idx, batch_size=training_args.per_device_eval_batch_size, gpu=args.gpu, output_dir=episode_output_dir)
                 # store results
                 evaluation_results[comb].append(res)
 
