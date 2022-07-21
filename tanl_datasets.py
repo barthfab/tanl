@@ -2504,12 +2504,14 @@ class BigBioDatasets(BaseDataset):
         for dataset in complete_dataset:
             for passage in dataset['passages']:
                 s_t = 0
-                header_offset = 0
-                headline = passage['text'][0].split('\n')[0]
-                if headline.endswith(' '):
-                    header_offset = 1
                 sentences = segmenter.split_single(passage['text'][0])
                 for guid, sentence in enumerate(sentences):
+                    if len(sentence) == 0:
+                        continue
+                    offset_sentence = passage['text'][0].split(sentence)[-1]
+                    offset = 0
+                    if offset_sentence.startswith(' \n'):
+                        offset += 1
                     if '[' in sentence:
                         continue
                     entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
@@ -2549,9 +2551,7 @@ class BigBioDatasets(BaseDataset):
                         events=example_events
                     ))
                     self.sentence_offset[passage['id'] + f"_{guid}"] = s_t
-                    if guid == 0 and header_offset > 0:
-                        s_t += header_offset
-                    s_t += len(sentence) + 1
+                    s_t += len(sentence) + offset + 1
 
         return examples
 
