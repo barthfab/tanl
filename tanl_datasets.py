@@ -2513,7 +2513,8 @@ class BigBioDatasets(BaseDataset):
                     if offset_sentence.startswith(' \n'):
                         offset += 1
                     if '[' in sentence:
-                        continue
+                        sentence = sentence.replace('[', '(')
+                        sentence = sentence.replace(']', ')')
                     entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
                                 and ta['offsets'][0][1] <= s_t + len(sentence)]
                     events = [ta for ta in dataset['events'] if ta['trigger']['offsets'][0][0] >= s_t
