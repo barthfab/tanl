@@ -941,17 +941,12 @@ class BigBioOutputFormat(BaseOutputFormat):
                     if argument:
                         if len(argument) == 1:
                             arg_event = argument[0]
-                            x = [a for a in output_events if a.arguments ]
                             string_args += " " + tag_type + ':' + arg_event.id
                             arguments.append(Argument(role=tag_type,
                                                       ref_id=arg_event.id
                                                       ))
                         else:
-                            min_event = min(argument, key=lambda x: min(abs(int(x.start) - event.end), abs(int(x.end) - event.start)))
-                            #if len([a.ref_id for a in arguments if min_event.id == a.ref_id]) >= 1:
-                            #    new_argument = [a for a in argument if a not in [a.ref_id for a in arguments if min_event.id == a.ref_id]]
-                            #    min_event = min(new_argument, key=lambda x: min(abs(int(x.start) - event.end),
-                            #                                                abs(int(x.end) - event.start)))
+                            min_event = min(argument, key=lambda x: min(filter(lambda i: i > 0, [int(x.start) - event.end, event.start - int(x.end)])))
                             string_args += " " + tag_type + ':' + min_event.id
                             arguments.append(Argument(role=tag_type,
                                                       ref_id=min_event.id
@@ -961,8 +956,14 @@ class BigBioOutputFormat(BaseOutputFormat):
                         argument = [e for e in example.entities if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
                         if argument:
                             #find the closest entity to the corresponding event
-                            min_event = min(argument, key=lambda x: min(abs(int(x.start) - event.end), abs(int(x.end) - event.start)))
-                            string_args += " " + tag_type + ':' + min_event.id.split('_')[-1]
+                            min_event = min(argument, key=lambda x: min(filter(lambda i: i > 0, [int(x.start) - event.end, event.start - int(x.end)])))
+                            if min_event.type == 'Entity':
+                                trigger_offset += 1
+                                output_lines.append(
+                                    f'T{entity_offset + trigger_offset}\t{min_event.type} {min_event.start} {min_event.end}\t{example.tokens[min_event.start:min_event.end]}\n')
+                                string_args += " " + tag_type + ':' + f'T{entity_offset + trigger_offset}'
+                            else:
+                                string_args += " " + tag_type + ':' + min_event.id.split('_')[-1]
                             arguments.append(Argument(role=tag_type,
                                                       ref_id=min_event.id.split('_')[-1]
                                                       ))
