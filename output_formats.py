@@ -947,7 +947,11 @@ class BigBioOutputFormat(BaseOutputFormat):
                                                       ref_id=arg_event.id
                                                       ))
                         else:
-                            min_event = min(argument, key=lambda x: abs(int(x.start) - event.start))
+                            min_event = min(argument, key=lambda x: min(abs(int(x.start) - event.end), abs(int(x.end) - event.start)))
+                            #if len([a.ref_id for a in arguments if min_event.id == a.ref_id]) >= 1:
+                            #    new_argument = [a for a in argument if a not in [a.ref_id for a in arguments if min_event.id == a.ref_id]]
+                            #    min_event = min(new_argument, key=lambda x: min(abs(int(x.start) - event.end),
+                            #                                                abs(int(x.end) - event.start)))
                             string_args += " " + tag_type + ':' + min_event.id
                             arguments.append(Argument(role=tag_type,
                                                       ref_id=min_event.id
@@ -957,10 +961,10 @@ class BigBioOutputFormat(BaseOutputFormat):
                         argument = [e for e in example.entities if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
                         if argument:
                             #find the closest entity to the corresponding event
-                            argument.sort(key=lambda x: (x.start - event.start))
-                            string_args += " " + tag_type + ':' + argument[0].id.split('_')[-1]
+                            min_event = min(argument, key=lambda x: min(abs(int(x.start) - event.end), abs(int(x.end) - event.start)))
+                            string_args += " " + tag_type + ':' + min_event.id.split('_')[-1]
                             arguments.append(Argument(role=tag_type,
-                                                      ref_id=argument[0].id.split('_')[-1]
+                                                      ref_id=min_event.id.split('_')[-1]
                                                       ))
                         else:
                             high_val_error = [e for e in example.events if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
