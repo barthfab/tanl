@@ -2624,17 +2624,17 @@ class BigBioDatasets(BaseDataset):
                 os.mkdir(f'./{output_dir}/{current_time}')
             except FileExistsError:
                 pass
-            if wrong_reconstruction:
+            if reconstructed_sentence:
                 with open(f'./{output_dir}/{current_time}/reconstruction_error.txt', 'a') as f:
                     f.write(example.id + '\n')
                     f.write(''.join(example.tokens) + '\n')
-                    f.write(reconstructed_sentence + '\n')
+                    f.writelines(reconstructed_sentence)
                     f.write(output_sentence + '\n')
             if argument_error:
                 with open(f'./{output_dir}/{current_time}/argument_error.txt', 'a') as f:
                     f.write(example.id + '\n')
                     f.write(''.join(example.tokens) + '\n')
-                    f.write(reconstructed_sentence + '\n')
+                    #f.write(reconstructed_sentence + '\n')
                     f.write(output_sentence + '\n')
 
 
