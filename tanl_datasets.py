@@ -2510,9 +2510,11 @@ class BigBioDatasets(BaseDataset):
                         continue
                     offset_sentence = passage['text'][0].split(sentence)[-1]
                     offset = 0
+                    if offset_sentence.startswith(' '):
+                        offset += 1
                     if offset_sentence.startswith(' \n'):
                         offset += 1
-                    if '[' in sentence:
+                    if '[' in sentence or ']' in sentence:
                         sentence = sentence.replace('[', '(')
                         sentence = sentence.replace(']', ')')
                     entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
@@ -2552,8 +2554,7 @@ class BigBioDatasets(BaseDataset):
                         events=example_events
                     ))
                     self.sentence_offset[passage['id'] + f"_{guid}"] = s_t
-                    s_t += len(sentence) + offset + 1
-
+                    s_t += len(sentence) + offset
         return examples
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,

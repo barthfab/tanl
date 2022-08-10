@@ -938,7 +938,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                     #check if the argument is an event
                     argument = [e for e in output_events if e.text.strip() == tag_name.strip() and e.id != event.id]
                     if not argument:
-                        argument = [e for e in output_events if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip() and e.id != event.id]
+                        argument = [e for e in output_events if "".join(example.tokens[e.start - sentence_offset:e.end - sentence_offset]).strip() == tag_name.strip() and e.id != event.id]
                     if argument:
                         if len(argument) == 1:
                             arg_event = argument[0]
@@ -954,21 +954,24 @@ class BigBioOutputFormat(BaseOutputFormat):
                                                       ))
                     else:
                         #check if the argument is an entity
+
                         argument = [e for e in example.entities if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
+                        '''
                         new_arg_finder = [e for e in example.events if
                                           event.type == e.type and
-                                          event.start == e.start and
-                                          event.end == e.end and
-                                          event.text == e.text]
+                                          event.start - sentence_offset == e.start and
+                                          event.end - sentence_offset == e.end and
+                                          event.text == "".join(e.text)]
                         for eventing in new_arg_finder:
                             for arg in eventing.arguments:
                                 if arg.role == tag_type:
                                     new_arg = [a for a in example.entities if arg.ref_id == a.id][0]
                                     if new_arg:
-                                        if example.tokens[new_arg.start:new_arg.end] == tag_name:
+                                        if ''.join(example.tokens[new_arg.start:new_arg.end]) == tag_name:
                                             argument = [new_arg]
                                             found_entities.append(f'T{entity_offset + trigger_offset}\t{new_arg.type} {new_arg.start} {new_arg.end}\t{example.tokens[new_arg.start:new_arg.end]}\n')
-
+                                            continue
+                        '''
                         if argument:
                             #find the closest entity to the corresponding event
                             min_event = min(argument, key=lambda x: min(filter(lambda i: i > 0, [int(x.start) - event.end, event.start - int(x.end)]), default=float("inf")))
@@ -991,7 +994,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                     tag_len_error = True
             event.arguments = arguments
             output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
-        return output_events, output_lines, found_entities, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error
+        return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error
 
     def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
                       event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):

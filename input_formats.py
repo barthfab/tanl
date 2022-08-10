@@ -116,7 +116,9 @@ class BigBioInputFormat(BaseInputFormat):
         augmentations = []
         if self.insert_entities:
             for entity in example.entities:
-                augmentations.append(([(entity.type,)], entity.start, entity.end))
+                #only for GE_11
+                if entity.type != 'Entity':
+                    augmentations.append(([], entity.start, entity.end))
             return augment_sentence(example.tokens,
                                     augmentations,
                                     self.BEGIN_ENTITY_TOKEN,
