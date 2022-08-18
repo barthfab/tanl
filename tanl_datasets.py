@@ -2514,6 +2514,8 @@ class BigBioDatasets(BaseDataset):
                         offset += 1
                     if offset_sentence.startswith(' \n'):
                         offset += 1
+                    if offset_sentence.startswith('\n'):
+                        offset += 1
                     if '[' in sentence or ']' in sentence:
                         sentence = sentence.replace('[', '(')
                         sentence = sentence.replace(']', ')')
@@ -2799,3 +2801,140 @@ class BigBioDatasets(BaseDataset):
         if high_order_error:
             epoch['global_high_order_error'] += 1
         return epoch
+
+@register_dataset
+class EventDetectionBigBioDatasets(BaseDataset):
+    name = 'edbigbio_kb'
+
+    dataset_names = ["bionlp_st_2011_ge"]
+    '''
+    "bionlp_st_2013_pc"
+    "bionlp_st_2013_gro",
+    "bionlp_st_2013_ge",
+    "bionlp_st_2013_cg",
+    "bionlp_st_2011_rel",
+    "bionlp_st_2011_id",'''
+
+    entity_types = []
+    eval_run = 0
+    event_types = []
+    sentence_offset = {}
+
+    def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
+        """
+        Load data for a single split (train, dev, or test).
+        """
+        data = []
+        examples = []
+        for dataset_name in self.dataset_names:
+            data.append(
+                datasets.load_dataset(f'../biomedical/bigbio/biodatasets/{dataset_name}',
+                                      name=f"{dataset_name}_{self.name[2:]}",
+                                      split=split))
+        complete_dataset = datasets.concatenate_datasets(data)
+        for dataset in complete_dataset:
+            for passage in dataset['passages']:
+                s_t = 0
+                sentences = segmenter.split_single(passage['text'][0])
+                for guid, sentence in enumerate(sentences):
+                    if len(sentence) == 0:
+                        continue
+                    offset_sentence = passage['text'][0].split(sentence)[-1]
+                    offset = 0
+                    if offset_sentence.startswith(' '):
+                        offset += 1
+                    if offset_sentence.startswith(' \n'):
+                        offset += 1
+                    if offset_sentence.startswith('\n'):
+                        offset += 1
+                    if '[' in sentence or ']' in sentence:
+                        sentence = sentence.replace('[', '(')
+                        sentence = sentence.replace(']', ')')
+                    entities = [ta for ta in dataset['entities'] if ta['offsets'][0][0] >= s_t
+                                and ta['offsets'][0][1] <= s_t + len(sentence)]
+                    events = [ta for ta in dataset['events'] if ta['trigger']['offsets'][0][0] >= s_t
+                              and ta['trigger']['offsets'][0][1] <= s_t + len(sentence)]
+                    example_entities = []
+                    example_events = []
+                    for entity in entities:
+                        example_entities.append(Entity(start=entity['offsets'][0][0] - s_t,
+                                                       end=entity['offsets'][0][1] - s_t,
+                                                       type=entity['type'],
+                                                       id=entity['id']))
+                        if entity['type'] not in self.entity_types:
+                            self.entity_types.append(entity['type'])
+                    for event in events:
+                        example_arguments = []
+                        if event['type'] not in self.event_types:
+                            self.event_types.append(event['type'])
+                        for argument in event['arguments']:
+                            example_arguments.append(Argument(
+                                role=argument['role'],
+                                ref_id=argument['ref_id']
+                            ))
+                        example_events.append(Event(
+                            id=event['id'],
+                            type=event['type'],
+                            text=event['trigger']['text'],
+                            start=event['trigger']['offsets'][0][0] - s_t,
+                            end=event['trigger']['offsets'][0][1] - s_t,
+                            arguments=example_arguments
+                        ))
+                    examples.append(InputExample(
+                        id=passage['id'] + f"_{guid}",
+                        tokens=list(sentence),
+                        entities=example_entities,
+                        events=example_events
+                    ))
+                    self.sentence_offset[passage['id'] + f"_{guid}"] = s_t
+                    s_t += len(sentence) + offset
+        return examples
+
+    def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
+                         macro: bool = False, output_dir: str='./output_files'):
+        """
+        Evaluate model on this dataset.
+        """
+        #eval every result
+        precision = 0
+        recall = 0
+        f1 = 0
+        examples_num = 0
+        for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
+            gold_events = example.entities.copy()
+            predicted_events, reconstructed_sentence = self.output_format.run_inference(example,
+                                                                                        output_sentence,
+                                                                                        )
+            if predicted_events or example.events:
+                examples_num += 1
+            else:
+                continue
+            tp = 0
+            fp = 0
+            for predicted_event in predicted_events:
+                event_name, event_type, start, end = predicted_event
+                event_type = event_type[0][0].strip()
+                if event_type in self.event_types:
+                    found_event = [event for event in gold_events if event.type == event_type
+                                   and event.start == start
+                                   and event.end == end]
+                    if found_event:
+
+                        gold_events.remove(found_event[0])
+                        tp += 1
+                    else:
+                        fp += 1
+                else:
+                    fp += 1
+            fn = len(gold_events)
+            try:
+                precision += tp / (tp + fp)
+            except:
+                precision += 0
+            recall += tp / (tp + fn)
+            f1 += tp / (tp + 0.5 * (fp + fn))
+
+        wandb.log({"F1": f1 / examples_num,
+                   "precision": precision / examples_num,
+                   "recall": recall / examples_num})
+        return {"F1": f1 / examples_num, "precision": precision / examples_num, "recall": recall / examples_num}

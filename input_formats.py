@@ -128,3 +128,24 @@ class BigBioInputFormat(BaseInputFormat):
                                     )
         else:
             return ''.join(example.tokens)
+
+
+@register_input_format
+class EventRecoBigBioInputFormat(BaseInputFormat):
+    name = 'edbigbio'
+    insert_entities = True
+
+    def _format_input(self, example: InputExample):
+        augmentations = []
+        if self.insert_entities:
+            for entity in example.entities:
+                # only for GE_11
+                if entity.type != 'Entity':
+                    augmentations.append(([], entity.start, entity.end))
+            return augment_sentence(example.tokens,
+                                     augmentations,
+                                     self.BEGIN_ENTITY_TOKEN,
+                                     self.SEPARATOR_TOKEN,
+                                     self.RELATION_SEPARATOR_TOKEN,
+                                     self.END_ENTITY_TOKEN,
+                                     )

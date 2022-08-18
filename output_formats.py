@@ -1055,7 +1055,7 @@ class BigBioOutputFormat(BaseOutputFormat):
                         closest_start = min(argument, key=lambda x: abs(int(x.split('\t')[1].split(' ')[1]) - event.start))
                         arguments.append(Argument(role=tag_type,
                                                   ref_id=closest_start.split('\t')[0]
-                                                 ))
+                                                  ))
                         string_args += " " + tag_type + ":" + closest_start.split('\t')[0]
                     else:
                         arguments.append(Argument(role=tag_type,
@@ -1068,3 +1068,37 @@ class BigBioOutputFormat(BaseOutputFormat):
             output_lines.append(f'E{event_offset + guid + 1}\t{event.type}:T{event.id[1:]}{string_args}\n')
 
         return output_entities, output_events, output_lines, format_error, argument_error, offset_error
+
+
+@register_output_format
+class EventRecoBigBioOutputFormat(BaseOutputFormat):
+    name = 'edbigbio'
+
+    def format_output(self, example: InputExample) -> str:
+        """
+        Get output in augmented natural language, for example:
+        [belief] hotel price range cheap , hotel type hotel , duration two [belief]
+        augmentations = [([(type,), (tail.text,role), (...) ], #, #), (...)]
+        """
+        augmentations = []
+        for event in example.events:
+            augmentations.append(([(event.type,)], event.start, event.end))
+        return augment_sentence(example.tokens,
+                                augmentations,
+                                self.BEGIN_ENTITY_TOKEN,
+                                self.SEPARATOR_TOKEN,
+                                self.RELATION_SEPARATOR_TOKEN,
+                                self.END_ENTITY_TOKEN,
+                                )
+
+    def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
+                      event_types: list[str] = None, entity_offset=None,  event_offset=None, offset_mapping=None):
+        """
+        Process an output sentence to extract the predicted relation.
+
+        Return an empty list of entities and a single relation, so that it is compatible with joint entity-relation
+        extraction datasets.
+        """
+        predicted_entities, wrong_reconstruction, reconstructed_sentence = self.parse_output_sentence_char(example.tokens, output_sentence)
+
+        return predicted_entities, reconstructed_sentence
