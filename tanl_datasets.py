@@ -2828,7 +2828,7 @@ class EventDetectionBigBioDatasets(BaseDataset):
         examples = []
         for dataset_name in self.dataset_names:
             data.append(
-                datasets.load_dataset(f'../biomedical/bigbio/biodatasets/{dataset_name}',
+                datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}',
                                       name=f"{dataset_name}_{self.name[2:]}",
                                       split=split))
         complete_dataset = datasets.concatenate_datasets(data)
@@ -2900,8 +2900,15 @@ class EventDetectionBigBioDatasets(BaseDataset):
         recall = 0
         f1 = 0
         examples_num = 0
+        try:
+            now = datetime.now()
+            current_time = now.strftime("%Y_%m_%d_%H")
+            os.mkdir(f'./{output_dir}/{current_time}')
+        except FileExistsError:
+            pass
+
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
-            gold_events = example.entities.copy()
+            gold_events = example.events.copy()
             predicted_events, reconstructed_sentence = self.output_format.run_inference(example,
                                                                                         output_sentence,
                                                                                         )
@@ -2926,12 +2933,22 @@ class EventDetectionBigBioDatasets(BaseDataset):
                         fp += 1
                 else:
                     fp += 1
+            with open(f'./{output_dir}/{current_time}/debug.txt', 'a') as f:
+                f.write('Gold events: ' + ' , '.join([e.type for e in gold_events]) + '\n')
+                f.write('Gold events: ' + ' , '.join([e.text for e in gold_events]) + '\n')
+                f.writelines('Gold sentence: ' + ''.join(example.tokens) + '\n')
+                f.writelines('rec sentence: ' + reconstructed_sentence + '\n')
+                f.write('rec events: ' + ' , '.join([e[1][0][0].strip() for e in predicted_events]) + '\n')
+                f.write('rec events: ' + ' , '.join([e[0] for e in predicted_events]) + '\n')
             fn = len(gold_events)
             try:
                 precision += tp / (tp + fp)
             except:
                 precision += 0
-            recall += tp / (tp + fn)
+            try:
+                recall += tp / (tp + fn)
+            except:
+                recall += 0
             f1 += tp / (tp + 0.5 * (fp + fn))
 
         wandb.log({"F1": f1 / examples_num,
