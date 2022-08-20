@@ -223,7 +223,7 @@ class BaseOutputFormat(ABC):
 
         return predicted_entities, wrong_reconstruction
 
-    def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str, sentence_offset) -> Tuple[list, bool, str]:
+    def parse_output_sentence_char(self, example_tokens: list[str], output_sentence: str, sentence_offset: int = 0) -> Tuple[list, bool, str]:
         """
         Parse an output sentence in augmented language and extract inferred entities and tags.
         Return a pair (predicted_entities, wrong_reconstruction), where:
