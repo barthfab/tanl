@@ -2902,6 +2902,10 @@ class EventDetectionBigBioDatasets(BaseDataset):
         tp = 0
         fp = 0
         fn = 0
+        macro_prec = 0
+        macro_rec = 0
+        macro_f1 = 0
+        num_ex = 0
         now = datetime.now()
         current_time = now.strftime("%Y_%m_%d_%H")
 
@@ -2913,19 +2917,33 @@ class EventDetectionBigBioDatasets(BaseDataset):
             predicted_events, reconstructed_sentence = self.output_format.run_inference(example,
                                                                                         output_sentence,
                                                                                         )
-            true = Multiset()
+            gold = Multiset()
             pred = Multiset()
             for event in example.events:
-                true.add((event.text[0], event.type, event.start, event.end))
+                gold.add((event.text[0], event.type, event.start, event.end))
             for event in predicted_events:
                 event_name, event_type, start, end = event
                 if event_type:
                     event_type = event_type[0][0].strip()
                 if event_type in self.event_types:
                     pred.add((event_name.strip(), event_type, start, end))
-            fn += len(true - pred)
-            fp += len(pred - true)
-            tp += len(pred & true)
+            macro_fn = len(gold - pred)
+            macro_fp = len(pred - gold)
+            macro_tp = len(pred & gold)
+            fn += macro_fn
+            fp += macro_fp
+            tp += macro_tp
+            if gold or pred:
+                num_ex += 1
+            try:
+                macro_prec += macro_tp / (macro_tp + macro_fp)
+                macro_rec += macro_tp / (macro_tp + macro_fn)
+                macro_f1 += macro_tp / (macro_tp + 0.5 * (macro_fp + macro_fn))
+            except:
+                macro_prec += 0
+                macro_rec += 0
+                macro_f1 += 0
+
 
             with open(f'./{output_dir}/{current_time}/debug.txt', 'a') as f:
                 f.write('Gold events: ' + ' , '.join([e.type for e in example.events]) + '\n')
@@ -2937,17 +2955,20 @@ class EventDetectionBigBioDatasets(BaseDataset):
 
         try:
             precision = tp / (tp + fp)
-        except Warning:
+        except:
             print('no precision')
             precision = 0
         try:
             recall = tp / (tp + fn)
-        except Warning:
+        except:
             print('no recall')
             recall = 0
         f1 = tp / (tp + 0.5 * (fp + fn))
 
-        wandb.log({"F1": f1,
-                   "precision": precision,
-                   "recall": recall})
+        wandb.log({"micro F1": f1,
+                   "micro precision": precision,
+                   "micro recall": recall})
+        wandb.log({"macro F1": macro_f1 / num_ex,
+                   "macro precision": macro_prec / num_ex,
+                   "macro recall": macro_rec / num_ex})
         return {"F1": f1, "precision": precision, "recall": recall}
