@@ -8,6 +8,7 @@ import os
 import logging
 import json
 import datasets
+from multiset import *
 import subprocess
 from itertools import islice
 from collections import Counter, defaultdict
@@ -2577,36 +2578,35 @@ class BigBioDatasets(BaseDataset):
         now = datetime.now()
         current_time = now.strftime("%Y_%m_%d_%H")
 
-
-        #eval every result
+        # eval every result
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
             id = example.id.split('__')[0]
             ex_id = int(example.id.split('_')[-1])
             ep_id = len(output_files)
 
-            #create new ids for events
+            # create new ids for events
             if len(entity_offset) < ep_id:
                 entity_offset.append({id: 200})
             else:
                 if id not in entity_offset[ep_id - 1].keys():
                     entity_offset[ep_id - 1].update({id: 200})
             output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error = \
-                self.output_format.get_all_events(example, output_sentence, self.event_types, entity_offset[ep_id - 1][id], self.sentence_offset[example.id])
-
+                self.output_format.get_all_events(example, output_sentence, self.event_types,
+                                                  entity_offset[ep_id - 1][id], self.sentence_offset[example.id])
 
             entity_offset[ep_id - 1][id] += offset
 
-
-            #sort output sentence in epoch{pubmed-id{text, events, output sentence}}
+            # sort output sentence in epoch{pubmed-id{text, events, output sentence}}
             if id in output_files[f'Epoch {ep_id}'].keys():
                 if ex_id in output_files[f'Epoch {ep_id}'][id]['text'].keys():
                     output_files[f'Epoch {ep_id + 1}'] = {id: {'text': {ex_id: reconstructed_sentence},
-                                                                'events': {ex_id: output_lines},
-                                                                'plain_output': {ex_id: output_sentence},
-                                                                }}
+                                                               'events': {ex_id: output_lines},
+                                                               'plain_output': {ex_id: output_sentence},
+                                                               }}
                     error_files[f'Epoch {ep_id + 1}'] = self.update_error(error_files['Error'], format_error,
-                                                                           argument_error, tag_len_error,
-                                                                           type_error, wrong_reconstruction, high_order_error)
+                                                                          argument_error, tag_len_error,
+                                                                          type_error, wrong_reconstruction,
+                                                                          high_order_error)
                 else:
                     output_files[f'Epoch {ep_id}'][id]['text'][ex_id] = reconstructed_sentence
                     output_files[f'Epoch {ep_id}'][id]['events'][ex_id] = output_lines
@@ -2617,12 +2617,13 @@ class BigBioDatasets(BaseDataset):
 
             else:
                 output_files[f'Epoch {ep_id}'][id] = {'text': {ex_id: reconstructed_sentence},
-                                                       'events': {ex_id: output_lines},
-                                                       'plain_output': {ex_id: output_sentence},
-                                                       }
+                                                      'events': {ex_id: output_lines},
+                                                      'plain_output': {ex_id: output_sentence},
+                                                      }
                 error_files[f'Epoch {ep_id}'].update(self.update_error(error_files[f'Epoch {ep_id}'], format_error,
-                                                                        argument_error, tag_len_error,
-                                                                        type_error, wrong_reconstruction, high_order_error))
+                                                                       argument_error, tag_len_error,
+                                                                       type_error, wrong_reconstruction,
+                                                                       high_order_error))
             try:
                 os.mkdir(f'./{output_dir}/{current_time}')
             except FileExistsError:
@@ -2637,12 +2638,10 @@ class BigBioDatasets(BaseDataset):
                 with open(f'./{output_dir}/{current_time}/argument_error.txt', 'a') as f:
                     f.write(example.id + '\n')
                     f.write(''.join(example.tokens) + '\n')
-                    #f.write(reconstructed_sentence + '\n')
+                    # f.write(reconstructed_sentence + '\n')
                     f.write(output_sentence + '\n')
 
-
-
-        #make output dir
+        # make output dir
         try:
             os.mkdir(f'./{output_dir}/{current_time}')
         except FileExistsError:
@@ -2653,7 +2652,7 @@ class BigBioDatasets(BaseDataset):
             pass
         epochs = os.listdir(f'./{output_dir}/{current_time}')
         epochs = [e for e in epochs if e.startswith('A2_Epoch_')]
-        #write eval results in a2 file
+        # write eval results in a2 file
         for name, epoch in output_files.items():
             ep_id = int(name.split(' ')[-1])
             if epochs:
@@ -2662,7 +2661,7 @@ class BigBioDatasets(BaseDataset):
             os.makedirs(f'./{output_dir}/{current_time}/A2_Epoch_{ep_id}/')
             os.makedirs(f'./{output_dir}/{current_time}/Eval_Epoch_{ep_id}/')
 
-            #log error results
+            # log error results
             wandb.log({'global_format_error': error_files[name]["global_format_error"],
                        'global_argument_error': error_files[name]["global_argument_error"],
                        'global_tag_len_error': error_files[name]["global_tag_len_error"],
@@ -2671,16 +2670,16 @@ class BigBioDatasets(BaseDataset):
                        'global_high_order_error': error_files[name]["global_high_order_error"],
                        })
 
-            #safe output error
+            # safe output error
             with open(f'./{output_dir}/{current_time}/Epoch {ep_id}/bugreport.txt', 'a') as f:
                 f.write(f'format_error: {error_files[name]["global_format_error"]}\n')
                 f.write(f'tag_len_error: {error_files[name]["global_tag_len_error"]}\n')
                 f.write(f'argument_error: {error_files[name]["global_argument_error"]}\n')
                 f.write(f'type_error: {error_files[name]["global_type_error"]}\n')
                 f.write(f'reconstruction_error: {error_files[name]["global_reconstruction_error"]}\n')
-                f.write(f'global_high_order_error: { error_files[name]["global_high_order_error"]}\n')
+                f.write(f'global_high_order_error: {error_files[name]["global_high_order_error"]}\n')
 
-            #print a2, txt and output sentences
+            # print a2, txt and output sentences
             for pmid, file in epoch.items():
                 txt_lines = sorted(file['text'].items())
                 txt_lines = [x[1] for x in txt_lines if len(x) >= 1]
@@ -2696,14 +2695,14 @@ class BigBioDatasets(BaseDataset):
                     for a2_line in a2_lines:
                         f.writelines(a2_line)
 
-            #get evaluation results
+            # get evaluation results
             files = os.listdir(f'./{output_dir}/{current_time}/A2_Epoch_{ep_id}/')
-            if 'pc'in self.dataset_names[0]:
+            if 'pc' in self.dataset_names[0]:
                 self.eval_pc(files, current_time, ep_id, output_dir)
             else:
                 self.eval_ge(files, current_time, ep_id, output_dir)
 
-        #unnecessary return
+        # unnecessary return
         return {'dir': f'./{output_dir}/{current_time}'}
 
     def eval_pc(self, files, current_time, ep_id, output_dir):
@@ -2722,7 +2721,8 @@ class BigBioDatasets(BaseDataset):
                        "precision": results[results["F-score"] != 100]["precision"].mean(),
                        "recall": results[results["F-score"] != 100]["recall"].mean()})
         for file in os.listdir(f'./{output_dir}/{current_time}/junk/'):
-            os.rename(f"./{output_dir}/{current_time}/junk/{file}", f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}")
+            os.rename(f"./{output_dir}/{current_time}/junk/{file}",
+                      f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}")
 
     def eval_ge(self, files, current_time, ep_id, output_dir):
         for file in files:
@@ -2758,8 +2758,8 @@ class BigBioDatasets(BaseDataset):
                     rec = float(field)
                     i += 1
                 elif field in ['Gene_expression', 'Transcription', 'Protein_catabolism', 'Phosphorylation',
-                             'Localization', '=[SVT-TOTAL]=', 'Binding', '==[EVT-TOTAL]==', 'Regulation',
-                             'Positive_regulation', 'Negative_regulation', '==[REG-TOTAL]==', '==[ALL-TOTAL]==']:
+                               'Localization', '=[SVT-TOTAL]=', 'Binding', '==[EVT-TOTAL]==', 'Regulation',
+                               'Positive_regulation', 'Negative_regulation', '==[REG-TOTAL]==', '==[ALL-TOTAL]==']:
                     name = field
                     i += 1
                     break
@@ -2785,9 +2785,11 @@ class BigBioDatasets(BaseDataset):
                            f"{name} precision": prec,
                            f"{name} recall": rec})
         for file in os.listdir(f'./{output_dir}/{current_time}/junk/'):
-            os.rename(f"./{output_dir}/{current_time}/junk/{file}", f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}")
+            os.rename(f"./{output_dir}/{current_time}/junk/{file}",
+                      f"./{output_dir}/{current_time}/A2_Epoch_{ep_id}/{file}")
 
-    def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error):
+    def update_error(self, epoch, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction,
+                     high_order_error):
         if format_error:
             epoch['global_format_error'] += 1
         if argument_error:
@@ -2801,6 +2803,7 @@ class BigBioDatasets(BaseDataset):
         if high_order_error:
             epoch['global_high_order_error'] += 1
         return epoch
+
 
 @register_dataset
 class EventDetectionBigBioDatasets(BaseDataset):
@@ -2891,67 +2894,60 @@ class EventDetectionBigBioDatasets(BaseDataset):
         return examples
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
-                         macro: bool = False, output_dir: str='./output_files'):
+                         macro: bool = False, output_dir: str = './output_files'):
         """
         Evaluate model on this dataset.
         """
-        #eval every result
-        precision = 0
-        recall = 0
-        f1 = 0
-        examples_num = 0
+        # eval every result
+        tp = 0
+        fp = 0
+        fn = 0
+        now = datetime.now()
+        current_time = now.strftime("%Y_%m_%d_%H")
+
         try:
-            now = datetime.now()
-            current_time = now.strftime("%Y_%m_%d_%H")
             os.mkdir(f'./{output_dir}/{current_time}')
         except FileExistsError:
             pass
-
         for example, output_sentence in self.generate_output_sentences(data_args, model, device, batch_size):
-            gold_events = example.events.copy()
             predicted_events, reconstructed_sentence = self.output_format.run_inference(example,
                                                                                         output_sentence,
                                                                                         )
-            if predicted_events or example.events:
-                examples_num += 1
-            else:
-                continue
-            tp = 0
-            fp = 0
-            for predicted_event in predicted_events:
-                event_name, event_type, start, end = predicted_event
-                event_type = event_type[0][0].strip()
+            true = Multiset()
+            pred = Multiset()
+            for event in example.events:
+                true.add((event.text[0], event.type, event.start, event.end))
+            for event in predicted_events:
+                event_name, event_type, start, end = event
+                if event_type:
+                    event_type = event_type[0][0].strip()
                 if event_type in self.event_types:
-                    found_event = [event for event in gold_events if event.type == event_type
-                                   and event.start == start
-                                   and event.end == end]
-                    if found_event:
+                    pred.add((event_name.strip(), event_type, start, end))
+            fn += len(true - pred)
+            fp += len(pred - true)
+            tp += len(pred & true)
 
-                        gold_events.remove(found_event[0])
-                        tp += 1
-                    else:
-                        fp += 1
-                else:
-                    fp += 1
             with open(f'./{output_dir}/{current_time}/debug.txt', 'a') as f:
-                f.write('Gold events: ' + ' , '.join([e.type for e in gold_events]) + '\n')
-                f.write('Gold events: ' + ' , '.join([e.text for e in gold_events]) + '\n')
+                f.write('Gold events: ' + ' , '.join([e.type for e in example.events]) + '\n')
+                f.write('Gold events: ' + ' , '.join([e.text[0] for e in example.events]) + '\n')
                 f.writelines('Gold sentence: ' + ''.join(example.tokens) + '\n')
                 f.writelines('rec sentence: ' + reconstructed_sentence + '\n')
                 f.write('rec events: ' + ' , '.join([e[1][0][0].strip() for e in predicted_events]) + '\n')
                 f.write('rec events: ' + ' , '.join([e[0] for e in predicted_events]) + '\n')
-            fn = len(gold_events)
-            try:
-                precision += tp / (tp + fp)
-            except:
-                precision += 0
-            try:
-                recall += tp / (tp + fn)
-            except:
-                recall += 0
-            f1 += tp / (tp + 0.5 * (fp + fn))
 
-        wandb.log({"F1": f1 / examples_num,
-                   "precision": precision / examples_num,
-                   "recall": recall / examples_num})
-        return {"F1": f1 / examples_num, "precision": precision / examples_num, "recall": recall / examples_num}
+        try:
+            precision = tp / (tp + fp)
+        except Warning:
+            print('no precision')
+            precision = 0
+        try:
+            recall = tp / (tp + fn)
+        except Warning:
+            print('no recall')
+            recall = 0
+        f1 = tp / (tp + 0.5 * (fp + fn))
+
+        wandb.log({"F1": f1,
+                   "precision": precision,
+                   "recall": recall})
+        return {"F1": f1, "precision": precision, "recall": recall}
