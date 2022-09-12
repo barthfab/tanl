@@ -2491,16 +2491,31 @@ class BigBioDatasets(BaseDataset):
     event_types = []
     sentence_offset = {}
 
+    def load_types(self, name, dataset):
+        if name == 'event':
+            events = dataset['events']
+            for document in events:
+                for event in document:
+                    if event['type'] not in self.event_types:
+                        self.event_types.append(event['type'])
+
+
     def load_data_single_split(self, split: str, seed: int = None) -> List[InputExample]:
         """
         Load data for a single split (train, dev, or test).
         """
         data = []
         examples = []
-        for dataset_name in self.dataset_names:
+        for idx, dataset_name in enumerate(self.dataset_names):
             data.append(
-                datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}', name=f"{dataset_name}_{self.name}",
+                datasets.load_dataset(f'../biomedical/bigbio/biodatasets/{dataset_name}',
+                                      name=f"{dataset_name}_{self.name}",
                                       split=split))
+            if split == 'test':
+                data_events = datasets.load_dataset(f'../biomedical/bigbio/biodatasets/{dataset_name}',
+                                      name=f"{dataset_name}_{self.name}",
+                                      split='train')
+                self.load_types('event', data_events)
         complete_dataset = datasets.concatenate_datasets(data)
         for dataset in complete_dataset:
             for passage in dataset['passages']:
@@ -2535,8 +2550,6 @@ class BigBioDatasets(BaseDataset):
                             self.entity_types.append(entity['type'])
                     for event in events:
                         example_arguments = []
-                        if event['type'] not in self.event_types:
-                            self.event_types.append(event['type'])
                         for argument in event['arguments']:
                             example_arguments.append(Argument(
                                 role=argument['role'],
@@ -2561,7 +2574,7 @@ class BigBioDatasets(BaseDataset):
         return examples
 
     def evaluate_dataset(self, data_args: DataTrainingArguments, model, device, batch_size: int,
-                         macro: bool = False, output_dir: str='./output_files'):
+                         macro: bool = False, output_dir: str = './output_files'):
         """
         Evaluate model on this dataset.
         """
@@ -2638,6 +2651,8 @@ class BigBioDatasets(BaseDataset):
                 with open(f'./{output_dir}/{current_time}/argument_error.txt', 'a') as f:
                     f.write(example.id + '\n')
                     f.write(''.join(example.tokens) + '\n')
+                    f.write(self.input_format.format_input(example) + '\n')
+                    f.write(self.output_format.format_output(example) + '\n')
                     # f.write(reconstructed_sentence + '\n')
                     f.write(output_sentence + '\n')
 
