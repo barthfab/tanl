@@ -118,7 +118,7 @@ class BigBioInputFormat(BaseInputFormat):
             for entity in example.entities:
                 #only for GE_11
                 if entity.type != 'Entity':
-                    augmentations.append(([], entity.start, entity.end))
+                    augmentations.append(([(entity.type,)], entity.start, entity.end))
             return augment_sentence(example.tokens,
                                     augmentations,
                                     self.BEGIN_ENTITY_TOKEN,
@@ -141,7 +141,7 @@ class EventRecoBigBioInputFormat(BaseInputFormat):
             for entity in example.entities:
                 # only for GE_11
                 if entity.type != 'Entity':
-                    augmentations.append(([], entity.start, entity.end))
+                    augmentations.append(([(entity.type,)], entity.start, entity.end))
             return augment_sentence(example.tokens,
                                      augmentations,
                                      self.BEGIN_ENTITY_TOKEN,
