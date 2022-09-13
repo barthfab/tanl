@@ -988,14 +988,17 @@ class BigBioOutputFormat(BaseOutputFormat):
                                                       ))
                         else:
                             high_val_error = [e for e in example.events if "".join(example.tokens[e.start:e.end]).strip() == tag_name.strip()]
+                            string_args += " " + tag_type + ':' + 'T1'
+                            arguments.append(Argument(role=tag_type,
+                                                      ref_id='T1'
+                                                      ))
                             if high_val_error:
                                 high_order_error = True
                             argument_error = True
                 else:
                     tag_len_error = True
             event.arguments = arguments
-            if not argument_error:
-                output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
+            output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
         return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error
 
     def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
