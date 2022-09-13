@@ -98,7 +98,7 @@ class BaseOutputFormat(ABC):
                 entity_name = ' '.join(entity_name_tokens).strip()
                 end = len(output_tokens)
 
-                tags = ()
+                tags = []
 
                 # split entity_other_tokens by |
                 splits = [
@@ -108,7 +108,7 @@ class BaseOutputFormat(ABC):
 
                 if state == "other" and len(splits) > 0:
                     for x in splits:
-                        tags += tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' '))
+                        tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
 
                 unmatched_predicted_entities.append((entity_name, tags, start, end))
 
@@ -271,7 +271,7 @@ class BaseOutputFormat(ABC):
                 entity_name = ''.join(entity_name_tokens).strip()
                 end = len(output_tokens)
 
-                tags = ()
+                tags = []
 
                 # split entity_other_tokens by |
                 splits = [
@@ -281,7 +281,7 @@ class BaseOutputFormat(ABC):
 
                 if state == "other" and len(splits) > 0:
                     for x in splits:
-                        tags += tuple(''.join(x).split(self.RELATION_SEPARATOR_TOKEN))
+                        tags.append(tuple(''.join(x).split(self.RELATION_SEPARATOR_TOKEN)))
 
                 unmatched_predicted_entities.append((entity_name, tags, start, end))
 
@@ -320,6 +320,7 @@ class BaseOutputFormat(ABC):
                 else:
                     # outside
                     output_tokens.append(token)
+
 
         # check if we reconstructed the original sentence correctly, after removing all spaces
         wrong_reconstruction = (''.join(output_tokens) != ''.join(example_tokens))
@@ -391,7 +392,7 @@ class BaseOutputFormat(ABC):
 
             if new_start is not None:
                 # predict entity
-                entity_tuple = (entity_name, entity_tags, new_start + sentence_offset, new_end + 1 + sentence_offset)
+                entity_tuple = (entity_name, tuple(entity_tags), new_start + sentence_offset, new_end + 1 + sentence_offset)
                 predicted_entities.append(entity_tuple)
 
         return predicted_entities, wrong_reconstruction, reconstructed_sentence
@@ -904,7 +905,6 @@ class BigBioOutputFormat(BaseOutputFormat):
         offset = 0
         trigger_offset = 0
         found_entities = []
-
         for predicted_event in list(set(predicted_events)):
             event_name, tags, start, end = predicted_event
             if len(tags) == 0 or len(tags[0]) > 1:
