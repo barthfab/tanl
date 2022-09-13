@@ -2508,7 +2508,7 @@ class BigBioDatasets(BaseDataset):
         examples = []
         for idx, dataset_name in enumerate(self.dataset_names):
             data.append(
-                datasets.load_dataset(f'../biomedical/bigbio/biodatasets/{dataset_name}',
+                datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}',
                                       name=f"{dataset_name}_{self.name}",
                                       split=split))
             if split == 'test':

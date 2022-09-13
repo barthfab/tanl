@@ -98,7 +98,7 @@ class BaseOutputFormat(ABC):
                 entity_name = ' '.join(entity_name_tokens).strip()
                 end = len(output_tokens)
 
-                tags = []
+                tags = ()
 
                 # split entity_other_tokens by |
                 splits = [
@@ -108,7 +108,7 @@ class BaseOutputFormat(ABC):
 
                 if state == "other" and len(splits) > 0:
                     for x in splits:
-                        tags.append(tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' ')))
+                        tags += tuple(' '.join(x).split(' ' + self.RELATION_SEPARATOR_TOKEN + ' '))
 
                 unmatched_predicted_entities.append((entity_name, tags, start, end))
 
@@ -271,7 +271,7 @@ class BaseOutputFormat(ABC):
                 entity_name = ''.join(entity_name_tokens).strip()
                 end = len(output_tokens)
 
-                tags = []
+                tags = ()
 
                 # split entity_other_tokens by |
                 splits = [
@@ -281,7 +281,7 @@ class BaseOutputFormat(ABC):
 
                 if state == "other" and len(splits) > 0:
                     for x in splits:
-                        tags.append(tuple(''.join(x).split(self.RELATION_SEPARATOR_TOKEN)))
+                        tags += tuple(''.join(x).split(self.RELATION_SEPARATOR_TOKEN))
 
                 unmatched_predicted_entities.append((entity_name, tags, start, end))
 
@@ -904,7 +904,8 @@ class BigBioOutputFormat(BaseOutputFormat):
         offset = 0
         trigger_offset = 0
         found_entities = []
-        for predicted_event in predicted_events:
+
+        for predicted_event in list(set(predicted_events)):
             event_name, tags, start, end = predicted_event
             if len(tags) == 0 or len(tags[0]) > 1:
                 # we do not have a tag for the entity type
@@ -993,7 +994,8 @@ class BigBioOutputFormat(BaseOutputFormat):
                 else:
                     tag_len_error = True
             event.arguments = arguments
-            output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
+            if not argument_error:
+                output_lines.append(f'{event.id}\t{event.type}:{event.trigger_id}{string_args}\n')
         return output_events, output_lines, reconstructed_sentence, offset, format_error, argument_error, tag_len_error, type_error, wrong_reconstruction, high_order_error
 
     def run_inference(self, example: InputExample, output_sentence: str, entity_types: list[str]=None,
