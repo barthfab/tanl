@@ -2512,7 +2512,7 @@ class BigBioDatasets(BaseDataset):
                                       name=f"{dataset_name}_{self.name}",
                                       split=split))
             if split == 'test':
-                data_events = datasets.load_dataset(f'../biomedical/bigbio/biodatasets/{dataset_name}',
+                data_events = datasets.load_dataset(f'../biomedical/biodatasets/{dataset_name}',
                                       name=f"{dataset_name}_{self.name}",
                                       split='train')
                 self.load_types('event', data_events)
@@ -2551,10 +2551,17 @@ class BigBioDatasets(BaseDataset):
                     for event in events:
                         example_arguments = []
                         for argument in event['arguments']:
-                            example_arguments.append(Argument(
-                                role=argument['role'],
-                                ref_id=argument['ref_id']
-                            ))
+                            if self.data_name[0] == "bionlp_st_2011_ge":
+                                if argument['role'] == 'Theme' or argument['role'] == 'Theme':
+                                    example_arguments.append(Argument(
+                                        role=argument['role'],
+                                        ref_id=argument['ref_id']
+                                    ))
+                            else:
+                                example_arguments.append(Argument(
+                                    role=argument['role'],
+                                    ref_id=argument['ref_id']
+                                ))
                         example_events.append(Event(
                             id=event['id'],
                             type=event['type'],
